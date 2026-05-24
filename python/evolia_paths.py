@@ -1,0 +1,66 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""Shared on-disk layout for every Python service.
+
+This is the Python mirror of the Rust `evolia-core` crate: one place that
+resolves `EVOLIA_HOME` and names the state files, so the value model, the
+blockchain anchor, the bitcoin bridge and the dashboard all read and write
+the *same* files and therefore interoperate.
+
+Default home is `$HOME/evolia` (matching the Termux layout and the Rust spine);
+`EVOLIA_HOME` overrides it.
+"""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+# 1 unit of cognitive value (BTC-e) converts to this many satoshis.
+CONVERSION_RATE_V_TO_SAT = 100_000
+
+
+def evolia_home() -> Path:
+    env = os.environ.get("EVOLIA_HOME")
+    return Path(env) if env else Path(os.path.expanduser("~")) / "evolia"
+
+
+def ensure_home() -> Path:
+    home = evolia_home()
+    home.mkdir(parents=True, exist_ok=True)
+    return home
+
+
+# --- shared state files ------------------------------------------------------
+
+def value_state() -> Path:
+    return evolia_home() / "evolia_value_state.json"
+
+
+def identity_state() -> Path:
+    """Headline figures (total_v, cycle_count) read by ganache_db + dashboard."""
+    return evolia_home() / "evolia_identity_state.json"
+
+
+def blockchain_sync_log() -> Path:
+    return evolia_home() / "evolia_blockchain_sync.log"
+
+
+def bitcoin_wallet_state() -> Path:
+    return evolia_home() / "evolia_bitcoin_wallet.json"
+
+
+def conversion_history() -> Path:
+    return evolia_home() / "evolia_btc_conversion_history.json"
+
+
+def mesh_vault() -> Path:
+    return evolia_home() / "evolia_mesh_vault"
+
+
+def deployment() -> Path:
+    return evolia_home() / "evolia_deployment.json"
+
+
+def contract_abi() -> Path:
+    return evolia_home() / "EvoliaCore.abi"

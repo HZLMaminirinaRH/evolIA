@@ -63,9 +63,10 @@ fn alive(pid: u32) -> bool {
     kill(Pid::from_raw(pid as i32), None).is_ok()
 }
 
-/// The default service mesh, mirroring the original Python orchestration.
-/// Each one is skipped automatically if its script is not present yet, so
-/// this works on a greenfield checkout and grows as services land.
+/// The default service mesh. Each one is skipped automatically if its script
+/// is not present yet, so this works on a greenfield checkout and grows as
+/// services land. The Go mesh-sync binary is opt-in via services.toml (its
+/// path is environment-specific once built).
 fn default_services() -> Vec<ServiceSpec> {
     let py = |name: &str, file: &str, args: &[&str]| {
         let mut a = vec![file.to_string()];
@@ -78,11 +79,9 @@ fn default_services() -> Vec<ServiceSpec> {
         }
     };
     vec![
-        py("network", "network.py", &[]),
-        py("mesh_sync", "mesh_sync.py", &[]),
-        py("main", "main.py", &[]),
+        py("evolia_run", "evolia_run.py", &[]),
         py("ganache_db", "ganache_db.py", &["continuous", "30"]),
-        py("dashboard", "dashboard_v35.py", &[]),
+        py("dashboard", "dashboard.py", &[]),
     ]
 }
 
