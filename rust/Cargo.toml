@@ -1,0 +1,32 @@
+[workspace]
+resolver = "2"
+members = [
+    "evolia-core",
+    "evolia-auth",
+    "evolia-security",
+    "evolia-start",
+    "evolia-stop",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[workspace.dependencies]
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["clock"] }
+argon2 = "0.5"
+hmac = "0.12"
+sha2 = "0.10"
+chacha20poly1305 = "0.10"
+base64 = "0.22"
+hex = "0.4"
+rpassword = "7"
+toml = "0.8"
+nix = { version = "0.29", features = ["signal", "process"] }
+evolia-core = { path = "evolia-core" }
+evolia-auth = { path = "evolia-auth" }
+evolia-security = { path = "evolia-security" }

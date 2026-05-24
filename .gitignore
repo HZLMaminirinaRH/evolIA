@@ -1,0 +1,18 @@
+# Rust
+/rust/target/
+**/*.rs.bk
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Go
+/go/bin/
+
+# Evolia runtime state (never commit secrets/keys)
+.evolia_auth.json
+.evolia_session.json
+.evolia_pids.json
+*.log
