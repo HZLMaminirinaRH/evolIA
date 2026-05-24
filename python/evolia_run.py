@@ -13,6 +13,7 @@ from __future__ import annotations
 import os
 import time
 
+from evolia_actions import drain
 from evolia_sensors import read_all
 from evolia_value import EvoliaValue
 
@@ -27,6 +28,9 @@ def main() -> None:
     try:
         while True:
             elapsed = time.monotonic() - started
+            # Fold any captured digital actions into the state before cycling.
+            for event in drain():
+                value.record_action(event["kind"], event["count"])
             summary = value.cycle(read_all(), elapsed_seconds=elapsed)
             print(
                 f"[evolia] cycle {summary['cycle']} "

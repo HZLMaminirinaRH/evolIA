@@ -57,9 +57,21 @@ func TestNewBlocksSkipsInvalidJSON(t *testing.T) {
 	}
 }
 
-func TestVaultDirHonorsEnv(t *testing.T) {
-	t.Setenv("EVOLIA_HOME", "/tmp/evolia-xyz")
-	if got := VaultDir(); got != filepath.Join("/tmp/evolia-xyz", "evolia_mesh_vault") {
-		t.Fatalf("unexpected vault dir: %q", got)
+func TestLoadPeersReadsPeersFile(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("EVOLIA_HOME", dir)
+	write(t, dir, "evolia_peers.json",
+		`[{"device_id":"d1","addr":"192.168.1.5"},{"device_id":"d2","addr":"192.168.1.6"}]`)
+
+	peers := LoadPeers()
+	if len(peers) != 2 || peers[0] != "192.168.1.5" || peers[1] != "192.168.1.6" {
+		t.Fatalf("unexpected peers: %v", peers)
+	}
+}
+
+func TestLoadPeersMissingFile(t *testing.T) {
+	t.Setenv("EVOLIA_HOME", t.TempDir())
+	if peers := LoadPeers(); peers != nil {
+		t.Fatalf("want nil for missing peers file, got %v", peers)
 	}
 }

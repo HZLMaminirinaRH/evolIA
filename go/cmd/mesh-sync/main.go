@@ -11,28 +11,31 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
 	"evolia/mesh"
+	"evolia/paths"
 )
 
 const cycle = 2 * time.Second
 
 func main() {
-	vault := mesh.VaultDir()
+	vault := paths.MeshVault()
 	if err := os.MkdirAll(vault, 0o700); err != nil {
 		fmt.Fprintln(os.Stderr, "mesh-sync: cannot create vault:", err)
 		os.Exit(1)
 	}
 
-	peers := parsePeers(os.Getenv("EVOLIA_PEERS"))
-	logf := newLogger(filepath.Join(mesh.Home(), "evolia_mesh_sync.log"))
-	logf(fmt.Sprintf("start vault=%s peers=%d cycle=%s", vault, len(peers), cycle))
+	logf := newLogger(paths.MeshSyncLog())
+	logf(fmt.Sprintf("start vault=%s cycle=%s", vault, cycle))
 
 	seen := map[string]bool{}
 	for {
+		// Peers come from EVOLIA_PEERS plus whatever evolia-net has discovered;
+		// reloaded each cycle so newly found peers are picked up.
+		peers := dedupe(append(parsePeers(os.Getenv("EVOLIA_PEERS")), mesh.LoadPeers()...))
+
 		blocks, err := mesh.NewBlocks(vault, seen)
 		if err != nil {
 			logf("scan error: " + err.Error())
@@ -49,6 +52,18 @@ func parsePeers(s string) []string {
 	for _, p := range strings.Split(s, ",") {
 		if p = strings.TrimSpace(p); p != "" {
 			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func dedupe(in []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, s := range in {
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
 		}
 	}
 	return out

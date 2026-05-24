@@ -28,18 +28,27 @@ rust/                    Cargo workspace — the security spine
   evolia-start/          binary: refuse-if-running -> auth -> init security -> launch services
   evolia-stop/           binary: owner auth gate -> SIGTERM/SIGKILL services -> clear state
 go/                      Go module `evolia` — networking
-  mesh/                  mesh-block detection + propagation logic (testable)
+  paths/                 shared EVOLIA_HOME layout (Go mirror of evolia-core)
+  mesh/                  mesh-block detection + propagation + LoadPeers (testable)
+  netdisc/               peer-discovery registry + announce parsing (testable)
   cmd/mesh-sync/         binary: watch the mesh vault, propagate new blocks over UDP
+  cmd/evolia-net/        binary: LAN peer discovery -> evolia_peers.json
 python/                  services that produce/consume the shared state
   evolia_paths.py        shared EVOLIA_HOME layout (Python mirror of evolia-core)
   evolia_sensors.py      sensor readers (termux-api), graceful fallback off-device
   evolia_evolve.py       THE evolutive formula (exponential) — the cognitive core
   evolia_value.py        accumulator: base(actions) x (1+V) + sensor floor
-  evolia_run.py          main loop launched by evolia-start
+  evolia_actions.py      action capture (SMS/photo/video + CLI) -> action queue
+  evolia_run.py          main loop: drain action queue + sample sensors + cycle
   ganache_db.py          anchor total_v to Ganache (LOCAL mode without web3)
   evolia_bitcoin.py      V -> satoshi conversion + wallet/conversion state
   dashboard.py           read-only aggregation of the shared state
 ```
+
+`evolia_actions.py` only ever appends events to `evolia_action_queue.jsonl`; the
+single state owner `evolia_run.py` drains that queue each cycle, so there is
+exactly one writer of the value state (race-free). `evolia-net` writes
+`evolia_peers.json`; mesh-sync reloads it each cycle to know where to propagate.
 
 ### How the pieces interoperate
 

@@ -1,8 +1,9 @@
 // Package mesh implements detection and propagation of evolIA mesh blocks.
 //
 // Blocks are JSON files dropped into the mesh vault under EVOLIA_HOME. This
-// package mirrors the Python layout so the Go mesh-sync service reads the same
-// vault the rest of the system writes to.
+// package mirrors the shared layout so the Go mesh-sync service reads the same
+// vault the rest of the system writes to, and the same peer list evolia-net
+// discovers.
 package mesh
 
 import (
@@ -10,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+
+	"evolia/paths"
 )
 
 // Block is the minimal shape read from a mesh vault file.
@@ -19,27 +22,9 @@ type Block struct {
 	VValue float64 `json:"v_value"`
 }
 
-// Home resolves EVOLIA_HOME, defaulting to $HOME/evolia (matching the Rust
-// evolia-core crate and the Python evolia_paths module).
-func Home() string {
-	if h := os.Getenv("EVOLIA_HOME"); h != "" {
-		return h
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "evolia"
-	}
-	return filepath.Join(home, "evolia")
-}
-
-// VaultDir is the mesh vault directory.
-func VaultDir() string {
-	return filepath.Join(Home(), "evolia_mesh_vault")
-}
-
 // NewBlocks returns the vault's *.json files not already in seen, marking each
-// returned file as seen. Files that fail to parse are skipped (but still
-// marked seen so a broken file is not retried forever).
+// returned file as seen. Files that fail to parse are skipped (but still marked
+// seen so a broken file is not retried forever).
 func NewBlocks(vault string, seen map[string]bool) ([]Block, error) {
 	matches, err := filepath.Glob(filepath.Join(vault, "*.json"))
 	if err != nil {
@@ -75,4 +60,26 @@ func readBlock(path string) (Block, error) {
 		return Block{}, err
 	}
 	return b, nil
+}
+
+// LoadPeers returns peer host addresses from the peers file written by
+// evolia-net. Returns nil if the file is missing or unreadable.
+func LoadPeers() []string {
+	data, err := os.ReadFile(paths.PeersFile())
+	if err != nil {
+		return nil
+	}
+	var peers []struct {
+		Addr string `json:"addr"`
+	}
+	if json.Unmarshal(data, &peers) != nil {
+		return nil
+	}
+	var out []string
+	for _, p := range peers {
+		if p.Addr != "" {
+			out = append(out, p.Addr)
+		}
+	}
+	return out
 }
