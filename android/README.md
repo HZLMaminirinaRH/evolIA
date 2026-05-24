@@ -45,9 +45,11 @@ shared state.
 
 ## Roadmap
 
-- **Phase 2b — finish the value layer.** Wire runtime permissions so WiFi scan
-  results, BLE device counts and location fixes feed the formula (today they
-  degrade to 0/false); add real action capture (camera/SMS observers enqueueing
+- **Phase 2b — finish the value layer.** *Done:* runtime permissions
+  (location / BLUETOOTH_SCAN / POST_NOTIFICATIONS) requested before start, and
+  `AndroidSensors` now feeds the formula real WiFi scan counts, a continuous BLE
+  device count and the last-known location fix (all permission-guarded, degrade
+  to 0/false). *Remaining:* real action capture (camera/SMS observers enqueueing
   to `ActionQueue`); anchor `total_v` on-chain with **web3j** (the web3 analog of
   `ganache_db.py`).
 - **Phase 3 — auth/security.** Replace the Rust TTY auth with a Kotlin screen

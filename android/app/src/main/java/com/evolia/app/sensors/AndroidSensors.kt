@@ -1,39 +1,61 @@
 package com.evolia.app.sensors
 
+import android.Manifest
+import android.bluetooth.BluetoothManager
+import android.bluetooth.le.BluetoothLeScanner
+import android.bluetooth.le.ScanCallback
+import android.bluetooth.le.ScanResult
 import android.content.Context
+import android.content.pm.PackageManager
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.location.LocationManager
 import android.net.wifi.WifiManager
+import android.os.Build
+import androidx.core.content.ContextCompat
 import com.evolia.app.core.SensorSample
+import java.util.Collections
 import kotlin.math.sqrt
 
 /**
- * Android replacement for the termux-api sensor readers. Motion sensors stream
- * via SensorManager (we keep the latest vector magnitude); WiFi count comes from
- * WifiManager. Everything degrades gracefully to a neutral value, exactly like
- * the Python readers do off-device.
+ * Android replacement for the termux-api sensor readers. Motion streams via
+ * SensorManager; WiFi via WifiManager; BLE via a continuous low-power scan whose
+ * distinct devices are counted per cycle; location via the last known fix.
  *
- * Note: WiFi scan results and BLE/location need runtime permissions on modern
- * Android; without them these return 0/false (Phase 2b wires the prompts).
+ * Every reader is permission- and null-guarded and degrades to a neutral value
+ * (0 / false), exactly like the Python readers off-device — so a denied
+ * permission or absent radio never breaks the value loop.
  */
-class AndroidSensors(private val context: Context) : SensorEventListener {
+class AndroidSensors(context: Context) : SensorEventListener {
 
-    private val sensorManager =
-        context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+    private val app = context.applicationContext
+    private val sensorManager = app.getSystemService(Context.SENSOR_SERVICE) as SensorManager
 
     @Volatile private var accelerometer = 0.0
     @Volatile private var gyroscope = 0.0
     @Volatile private var magnetometer = 0.0
 
+    private val bleDevices = Collections.synchronizedSet(mutableSetOf<String>())
+    private var bleScanner: BluetoothLeScanner? = null
+    private val bleCallback = object : ScanCallback() {
+        override fun onScanResult(callbackType: Int, result: ScanResult) {
+            bleDevices.add(result.device.address)
+        }
+    }
+
     fun start() {
         register(Sensor.TYPE_ACCELEROMETER)
         register(Sensor.TYPE_GYROSCOPE)
         register(Sensor.TYPE_MAGNETIC_FIELD)
+        startBle()
     }
 
-    fun stop() = sensorManager.unregisterListener(this)
+    fun stop() {
+        sensorManager.unregisterListener(this)
+        stopBle()
+    }
 
     private fun register(type: Int) {
         sensorManager.getDefaultSensor(type)?.let {
@@ -56,21 +78,76 @@ class AndroidSensors(private val context: Context) : SensorEventListener {
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
 
+    // --- radios --------------------------------------------------------------
+
+    private fun startBle() {
+        if (!hasPermission(bleScanPermission())) return
+        val manager = app.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager ?: return
+        val adapter = manager.adapter ?: return
+        if (!adapter.isEnabled) return
+        bleScanner = adapter.bluetoothLeScanner
+        try {
+            bleScanner?.startScan(bleCallback)
+        } catch (_: SecurityException) {
+        }
+    }
+
+    private fun stopBle() {
+        try {
+            bleScanner?.stopScan(bleCallback)
+        } catch (_: Exception) {
+        }
+        bleScanner = null
+    }
+
+    private fun bleScanPermission(): String =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            Manifest.permission.BLUETOOTH_SCAN
+        } else {
+            Manifest.permission.ACCESS_FINE_LOCATION
+        }
+
     private fun wifiCount(): Int = try {
-        val wm = context.applicationContext
-            .getSystemService(Context.WIFI_SERVICE) as WifiManager
+        val wm = app.getSystemService(Context.WIFI_SERVICE) as WifiManager
         @Suppress("DEPRECATION")
         wm.scanResults?.size ?: 0
     } catch (_: Exception) {
         0
     }
 
-    fun sample(): SensorSample = SensorSample(
-        accelerometer = accelerometer,
-        gyroscope = gyroscope,
-        magnetometer = magnetometer,
-        locationFix = false,
-        wifiCount = wifiCount(),
-        bleCount = 0,
-    )
+    private fun hasLocationFix(): Boolean {
+        if (!hasPermission(Manifest.permission.ACCESS_FINE_LOCATION) &&
+            !hasPermission(Manifest.permission.ACCESS_COARSE_LOCATION)
+        ) {
+            return false
+        }
+        return try {
+            val lm = app.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+            listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER).any { p ->
+                lm.isProviderEnabled(p) && lm.getLastKnownLocation(p) != null
+            }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun hasPermission(permission: String): Boolean =
+        ContextCompat.checkSelfPermission(app, permission) == PackageManager.PERMISSION_GRANTED
+
+    fun sample(): SensorSample {
+        // Distinct BLE devices seen since the last cycle, then reset the window.
+        val ble = synchronized(bleDevices) {
+            val count = bleDevices.size
+            bleDevices.clear()
+            count
+        }
+        return SensorSample(
+            accelerometer = accelerometer,
+            gyroscope = gyroscope,
+            magnetometer = magnetometer,
+            locationFix = hasLocationFix(),
+            wifiCount = wifiCount(),
+            bleCount = ble,
+        )
+    }
 }

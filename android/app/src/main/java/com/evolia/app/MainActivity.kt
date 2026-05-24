@@ -1,10 +1,13 @@
 package com.evolia.app
 
+import android.Manifest
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.evolia.app.core.ActionQueue
@@ -14,6 +17,17 @@ import java.io.File
 /** Minimal control panel: start/stop the supervisor and show the shared state. */
 class MainActivity : AppCompatActivity() {
 
+    // Ask for the radio/notification permissions, then start regardless — the
+    // sensor layer degrades gracefully if any are denied.
+    private val startWithPermissions = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) {
+        ContextCompat.startForegroundService(
+            this,
+            Intent(this, EvoliaService::class.java),
+        )
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -22,10 +36,7 @@ class MainActivity : AppCompatActivity() {
         val start = Button(this).apply {
             text = "Démarrer Evolia"
             setOnClickListener {
-                ContextCompat.startForegroundService(
-                    this@MainActivity,
-                    Intent(this@MainActivity, EvoliaService::class.java),
-                )
+                startWithPermissions.launch(neededPermissions())
                 status.text = readStatus()
             }
         }
@@ -63,6 +74,20 @@ class MainActivity : AppCompatActivity() {
             },
         )
         status.text = readStatus()
+    }
+
+    private fun neededPermissions(): Array<String> {
+        val perms = mutableListOf(
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION,
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            perms += Manifest.permission.POST_NOTIFICATIONS
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            perms += Manifest.permission.BLUETOOTH_SCAN
+        }
+        return perms.toTypedArray()
     }
 
     private fun readStatus(): String {
