@@ -74,9 +74,12 @@ exactly one writer of the value state (race-free). `evolia-net` writes
 
 `.github/workflows/ci.yml` runs on every push and PR: Rust (`cargo fmt --check`,
 `cargo clippy -- -D warnings`, build, test), Go (`gofmt -l`, `go vet`, build,
-test), Python (`py_compile`, test scripts), and a Web3 job (installs
-web3+eth-tester, runs `tests/test_web3.py` against an in-process EVM). Keep them
-green; run the same commands locally before pushing.
+test), Python (`py_compile`, test scripts), a Web3 job (installs web3+eth-tester,
+runs `tests/test_web3.py` against an in-process EVM), and Android (Gradle
+`:app:testDebugUnitTest` + `:app:assembleDebug` — compiles the Kotlin app and
+runs the pure value-core tests, so a broken port fails the build even though
+there is no Android SDK in the local sandbox). Keep them green; run the same
+commands locally before pushing.
 
 ### How the pieces interoperate
 

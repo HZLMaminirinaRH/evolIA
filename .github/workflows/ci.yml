@@ -79,3 +79,24 @@ jobs:
         run: pip install web3 eth-tester py-evm
       - name: On-chain anchoring test
         run: python tests/test_web3.py
+
+  android:
+    name: Android (Plan B app)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Unit tests (pure value core)
+        run: gradle :app:testDebugUnitTest --no-daemon
+      - name: Assemble debug APK
+        run: gradle :app:assembleDebug --no-daemon
