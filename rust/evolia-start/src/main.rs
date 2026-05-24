@@ -129,7 +129,12 @@ fn launch(spec: &ServiceSpec, home: &Path, dev: &str, token: &str) -> Option<u32
         .spawn()
     {
         Ok(child) => {
-            println!("✅ {} (pid {}) → logs/{}.log", spec.name, child.id(), spec.name);
+            println!(
+                "✅ {} (pid {}) → logs/{}.log",
+                spec.name,
+                child.id(),
+                spec.name
+            );
             Some(child.id())
         }
         Err(e) => {
@@ -152,7 +157,9 @@ fn main() -> Result<()> {
         if let Ok(txt) = std::fs::read_to_string(&pids_path) {
             if let Ok(entries) = serde_json::from_str::<Vec<PidEntry>>(&txt) {
                 if entries.iter().any(|e| alive(e.pid)) {
-                    eprintln!("⚠️  Des services semblent déjà actifs. Lancez 'evolia-stop' d'abord.");
+                    eprintln!(
+                        "⚠️  Des services semblent déjà actifs. Lancez 'evolia-stop' d'abord."
+                    );
                     std::process::exit(1);
                 }
             }
@@ -205,7 +212,10 @@ fn main() -> Result<()> {
     evolia_core::set_owner_only(&pids_path).ok();
 
     println!("\n{bar}");
-    println!("✅ {} service(s) lancé(s). Arrêt: 'evolia-stop'.", pids.len());
+    println!(
+        "✅ {} service(s) lancé(s). Arrêt: 'evolia-stop'.",
+        pids.len()
+    );
     println!("{bar}");
     Ok(())
 }

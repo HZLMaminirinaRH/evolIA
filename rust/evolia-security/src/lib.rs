@@ -92,7 +92,11 @@ impl Security {
         Ok(String::from_utf8(plaintext)?)
     }
 
-    pub fn generate_session_token(&self, user_id: &str, duration_secs: i64) -> Result<SessionToken> {
+    pub fn generate_session_token(
+        &self,
+        user_id: &str,
+        duration_secs: i64,
+    ) -> Result<SessionToken> {
         let created = now();
         let expires = created + chrono::Duration::seconds(duration_secs);
 
@@ -128,8 +132,8 @@ impl Security {
         if data.device_id != self.device_id {
             return Ok(None);
         }
-        let expires = chrono::DateTime::parse_from_rfc3339(&data.expires_at)?
-            .with_timezone(&chrono::Utc);
+        let expires =
+            chrono::DateTime::parse_from_rfc3339(&data.expires_at)?.with_timezone(&chrono::Utc);
         if now() > expires {
             return Ok(None);
         }

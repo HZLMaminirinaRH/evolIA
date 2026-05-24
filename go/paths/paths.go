@@ -27,6 +27,21 @@ func MeshVault() string { return filepath.Join(Home(), "evolia_mesh_vault") }
 // PeersFile is where evolia-net records discovered peers and mesh-sync reads them.
 func PeersFile() string { return filepath.Join(Home(), "evolia_peers.json") }
 
-// MeshSyncLog and NetworkLog are the per-service JSON-line logs.
+// CognitiveParams is the fused cognitive-parameter file the bridge maintains.
+func CognitiveParams() string { return filepath.Join(Home(), "evolia_cognitive_params.json") }
+
+// MeshSyncLog, NetworkLog and BridgeLog are the per-service JSON-line logs.
 func MeshSyncLog() string { return filepath.Join(Home(), "evolia_mesh_sync.log") }
 func NetworkLog() string  { return filepath.Join(Home(), "evolia_network.log") }
+func BridgeLog() string   { return filepath.Join(Home(), "evolia_bridge.log") }
+
+// DeviceID resolves this node's id: EVOLIA_DEVICE_ID, else hostname, else a default.
+func DeviceID() string {
+	if v := os.Getenv("EVOLIA_DEVICE_ID"); v != "" {
+		return v
+	}
+	if h, err := os.Hostname(); err == nil && h != "" {
+		return h
+	}
+	return "evolia-node"
+}

@@ -29,10 +29,12 @@ rust/                    Cargo workspace — the security spine
   evolia-stop/           binary: owner auth gate -> SIGTERM/SIGKILL services -> clear state
 go/                      Go module `evolia` — networking
   paths/                 shared EVOLIA_HOME layout (Go mirror of evolia-core)
-  mesh/                  mesh-block detection + propagation + LoadPeers (testable)
+  mesh/                  mesh-block detection + propagation + LoadPeers + TotalV
   netdisc/               peer-discovery registry + announce parsing (testable)
+  bridge/                peer block-exchange HTTP handlers + param fusion (testable)
   cmd/mesh-sync/         binary: watch the mesh vault, propagate new blocks over UDP
   cmd/evolia-net/        binary: LAN peer discovery -> evolia_peers.json
+  cmd/evolia-bridge/     binary: HTTP API (/block, /sync, /mesh/total_v, /health)
 python/                  services that produce/consume the shared state
   evolia_paths.py        shared EVOLIA_HOME layout (Python mirror of evolia-core)
   evolia_sensors.py      sensor readers (termux-api), graceful fallback off-device
@@ -49,6 +51,16 @@ python/                  services that produce/consume the shared state
 single state owner `evolia_run.py` drains that queue each cycle, so there is
 exactly one writer of the value state (race-free). `evolia-net` writes
 `evolia_peers.json`; mesh-sync reloads it each cycle to know where to propagate.
+`evolia-bridge` accepts peer blocks over HTTP, stores them in the mesh vault
+(so mesh-sync/dashboard pick them up) and fuses incoming cognitive params into
+`evolia_cognitive_params.json`.
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every push and PR, with one job per language:
+Rust (`cargo fmt --check`, `cargo clippy -- -D warnings`, build, test), Go
+(`gofmt -l`, `go vet`, build, test), Python (`py_compile`, run the test scripts).
+Keep all three green; run the same commands locally before pushing.
 
 ### How the pieces interoperate
 

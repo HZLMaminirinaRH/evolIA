@@ -24,23 +24,13 @@ const (
 )
 
 func main() {
-	self := deviceID()
+	self := paths.DeviceID()
 	logf := newLogger(paths.NetworkLog())
 	reg := netdisc.NewRegistry()
 	logf("start device=" + self + " listen=" + discoveryAddr)
 
 	go listen(self, reg, logf)
 	announce(self, logf)
-}
-
-func deviceID() string {
-	if v := os.Getenv("EVOLIA_DEVICE_ID"); v != "" {
-		return v
-	}
-	if h, err := os.Hostname(); err == nil && h != "" {
-		return h
-	}
-	return "evolia-node"
 }
 
 func listen(self string, reg *netdisc.Registry, logf func(string)) {

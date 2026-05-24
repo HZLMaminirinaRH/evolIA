@@ -50,6 +50,21 @@ func NewBlocks(vault string, seen map[string]bool) ([]Block, error) {
 	return out, nil
 }
 
+// TotalV sums v_value across all blocks currently in the vault.
+func TotalV(vault string) float64 {
+	matches, err := filepath.Glob(filepath.Join(vault, "*.json"))
+	if err != nil {
+		return 0
+	}
+	var total float64
+	for _, path := range matches {
+		if b, err := readBlock(path); err == nil {
+			total += b.VValue
+		}
+	}
+	return total
+}
+
 func readBlock(path string) (Block, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

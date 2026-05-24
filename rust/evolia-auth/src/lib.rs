@@ -102,8 +102,8 @@ pub fn setup_initial_credentials() -> Result<AuthConfig> {
         println!("❌ Mot de passe trop court (min 8).");
     };
 
-    let biometric_enabled = prompt_line("Configurer la biométrie (empreinte)? (y/n): ")?
-        .eq_ignore_ascii_case("y");
+    let biometric_enabled =
+        prompt_line("Configurer la biométrie (empreinte)? (y/n): ")?.eq_ignore_ascii_case("y");
 
     let cfg = AuthConfig {
         owner: true,
@@ -114,7 +114,10 @@ pub fn setup_initial_credentials() -> Result<AuthConfig> {
         last_auth: None,
     };
     save_config(&cfg)?;
-    println!("\n✅ Authentification configurée ({}).", evolia_core::auth_file().display());
+    println!(
+        "\n✅ Authentification configurée ({}).",
+        evolia_core::auth_file().display()
+    );
     Ok(cfg)
 }
 
@@ -129,7 +132,10 @@ pub fn ensure_setup() -> Result<()> {
 fn auth_pin(cfg: &AuthConfig) -> Result<bool> {
     println!("\n[1/3] Vérification PIN");
     for attempt in 0..MAX_ATTEMPTS {
-        let pin = prompt_line(&format!("PIN ({} essai(s) restant(s)): ", MAX_ATTEMPTS - attempt))?;
+        let pin = prompt_line(&format!(
+            "PIN ({} essai(s) restant(s)): ",
+            MAX_ATTEMPTS - attempt
+        ))?;
         if verify_secret(&pin, &cfg.pin_hash) {
             println!("✅ PIN correct.");
             return Ok(true);

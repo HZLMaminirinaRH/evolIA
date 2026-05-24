@@ -35,6 +35,7 @@ install -m 0755 "$REPO/rust/target/release/evolia-stop" "$BIN/evolia-stop"
 echo "==> [4/5] Build Go services"
 ( cd "$REPO/go" && go build -o "$BIN/evolia-mesh-sync" ./cmd/mesh-sync )
 ( cd "$REPO/go" && go build -o "$BIN/evolia-net" ./cmd/evolia-net )
+( cd "$REPO/go" && go build -o "$BIN/evolia-bridge" ./cmd/evolia-bridge )
 
 echo "==> [5/5] Install Python services into $EVOLIA_HOME"
 mkdir -p "$EVOLIA_HOME"
@@ -53,6 +54,10 @@ requires_file = "evolia_actions.py"
 [[service]]
 name = "network"
 command = "evolia-net"
+
+[[service]]
+name = "bridge"
+command = "evolia-bridge"
 
 [[service]]
 name = "mesh_sync"
