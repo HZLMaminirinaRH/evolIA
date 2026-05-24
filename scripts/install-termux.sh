@@ -40,6 +40,8 @@ echo "==> [4/5] Build Go services"
 echo "==> [5/5] Install Python services into $EVOLIA_HOME"
 mkdir -p "$EVOLIA_HOME"
 cp "$REPO"/python/*.py "$EVOLIA_HOME/"
+# Ship the prebuilt contract artifact too (used by evolia_deploy in web3 mode).
+cp "$REPO/contracts/EvoliaCore.json" "$EVOLIA_HOME/" 2>/dev/null || true
 
 cat > "$EVOLIA_HOME/services.toml" <<'TOML'
 # Services launched by evolia-start. Edit freely; a missing python file is

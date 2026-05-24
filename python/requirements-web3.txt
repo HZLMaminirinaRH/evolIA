@@ -1,0 +1,14 @@
+# Optional dependencies for REAL on-chain anchoring (ganache_db + evolia_deploy).
+# Without these, ganache_db runs in LOCAL mode and everything else still works.
+#
+#   pip install -r requirements-web3.txt
+#
+# A running node is also needed at deploy/anchor time (Ganache, installed via
+# npm by scripts/setup-web3-termux.sh). The contract is shipped prebuilt in
+# contracts/EvoliaCore.json, so no Solidity compiler is required.
+
+web3>=6
+
+# Only needed to run the on-chain test without a node (in-process EVM):
+eth-tester
+py-evm

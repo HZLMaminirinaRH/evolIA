@@ -79,6 +79,25 @@ def _connect():
         return None
 
 
+def anchor_on_contract(w3, contract, account, v_value, sensory_type="Physique+Ondes"):
+    """Anchor v_value on-chain via EvoliaCore.anchorValue; returns the log entry.
+
+    The value is scaled to an integer (x100) since the contract stores uints.
+    Pulled out as its own function so the real on-chain path is unit-testable
+    against an in-process EVM (see tests/test_web3.py).
+    """
+    tx_hash = contract.functions.anchorValue(int(v_value * 100), sensory_type).transact(
+        {"from": account}
+    )
+    receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+    return build_log_entry(
+        v_value,
+        "success",
+        tx_hash=receipt["transactionHash"].hex(),
+        block=receipt["blockNumber"],
+    )
+
+
 def sync_once() -> dict:
     """Anchor the current value once. Returns the log entry that was written."""
     v_value = read_total_v()
@@ -95,13 +114,7 @@ def sync_once() -> dict:
 
     w3, contract = conn
     try:
-        tx_hash = contract.functions.anchorValue(int(v_value * 100), "Physique+Ondes").transact(
-            {"from": w3.eth.default_account}
-        )
-        receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-        entry = build_log_entry(
-            v_value, "success", tx_hash=tx_hash.hex(), block=receipt["blockNumber"]
-        )
+        entry = anchor_on_contract(w3, contract, w3.eth.default_account, v_value)
     except Exception as exc:  # pragma: no cover - network path
         entry = build_log_entry(v_value, "failed", error=str(exc))
     log_sync(entry)

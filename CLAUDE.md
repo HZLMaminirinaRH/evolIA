@@ -42,10 +42,19 @@ python/                  services that produce/consume the shared state
   evolia_value.py        accumulator: base(actions) x (1+V) + sensor floor
   evolia_actions.py      action capture (SMS/photo/video + CLI) -> action queue
   evolia_run.py          main loop: drain action queue + sample sensors + cycle
-  ganache_db.py          anchor total_v to Ganache (LOCAL mode without web3)
+  evolia_deploy.py       deploy EvoliaCore from the prebuilt artifact (web3)
+  ganache_db.py          anchor total_v on-chain (web3); LOCAL mode without it
   evolia_bitcoin.py      V -> satoshi conversion + wallet/conversion state
   dashboard.py           read-only aggregation of the shared state
+contracts/               EvoliaCore.sol + prebuilt EvoliaCore.json (abi+bytecode)
 ```
+
+On-chain anchoring is optional and self-contained: `contracts/EvoliaCore.json`
+ships the compiled ABI+bytecode (no solc needed). With `web3` installed and a
+node reachable, `evolia_deploy.py` deploys it (idempotently) and `ganache_db.py`
+calls `anchorValue` each sync; `ganache_db.anchor_on_contract` is unit-tested
+against an in-process EVM in `tests/test_web3.py`. Without web3, `ganache_db`
+logs in LOCAL mode and the rest is unaffected.
 
 `evolia_actions.py` only ever appends events to `evolia_action_queue.jsonl`; the
 single state owner `evolia_run.py` drains that queue each cycle, so there is
@@ -57,10 +66,11 @@ exactly one writer of the value state (race-free). `evolia-net` writes
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs on every push and PR, with one job per language:
-Rust (`cargo fmt --check`, `cargo clippy -- -D warnings`, build, test), Go
-(`gofmt -l`, `go vet`, build, test), Python (`py_compile`, run the test scripts).
-Keep all three green; run the same commands locally before pushing.
+`.github/workflows/ci.yml` runs on every push and PR: Rust (`cargo fmt --check`,
+`cargo clippy -- -D warnings`, build, test), Go (`gofmt -l`, `go vet`, build,
+test), Python (`py_compile`, test scripts), and a Web3 job (installs
+web3+eth-tester, runs `tests/test_web3.py` against an in-process EVM). Keep them
+green; run the same commands locally before pushing.
 
 ### How the pieces interoperate
 
@@ -119,9 +129,12 @@ Standard-library only for the value model and sensors; optional services
 (`ganache_db.py`, `evolia_bitcoin.py`) guard `web3`/`bitcoinlib` and run in a degraded
 LOCAL mode when those are absent. Run from the `python/` directory:
 
-- Tests: `python3 tests/test_value.py` and `python3 tests/test_services.py`
+- Tests: run the scripts in `tests/` (`test_value.py`, `test_services.py`,
+  `test_actions.py`, `test_web3.py`). `test_web3.py` skips unless web3+eth-tester
+  are installed.
 - Demo a module: `EVOLIA_HOME=/tmp/x python3 evolia_value.py` (also `dashboard.py`, etc.)
-- Deps: `pip install -r requirements.txt` (none required for the value model)
+- Deps: `pip install -r requirements.txt` (none for the value model);
+  `pip install -r requirements-web3.txt` for real on-chain anchoring.
 
 ## When more code lands, update this file
 

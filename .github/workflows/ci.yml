@@ -63,3 +63,19 @@ jobs:
           python tests/test_value.py
           python tests/test_services.py
           python tests/test_actions.py
+
+  web3:
+    name: Web3 (on-chain anchoring)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install web3 + in-process EVM
+        run: pip install web3 eth-tester py-evm
+      - name: On-chain anchoring test
+        run: python tests/test_web3.py

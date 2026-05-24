@@ -88,6 +88,26 @@ explicitly (e.g. from a Termux:Tasker shortcut or widget):
 python3 ~/evolia/evolia_actions.py record screen_input 1
 ```
 
+## 7b. Real on-chain anchoring (Web3 + Ganache) — optional
+
+By default `ganache_db` runs in LOCAL mode. For a real blockchain test:
+
+```sh
+bash scripts/setup-web3-termux.sh    # installs nodejs+ganache+web3, ships the
+                                     # prebuilt contract, rewrites services.toml
+evolia-stop && evolia-start          # Ganache -> deploy (once) -> on-chain anchoring
+```
+
+Then confirm it anchored on-chain (status "success", not "local"):
+
+```sh
+grep success ~/evolia/logs/ganache_db.log
+```
+
+The contract is shipped prebuilt in `contracts/EvoliaCore.json`, so **no Solidity
+compiler is needed**. Re-run `setup-web3-termux.sh` after any `install-termux.sh`
+(the latter writes the LOCAL-mode services.toml).
+
 ## 8. Staying alive on Android (avoiding signal 9)
 
 `evolia-start` already does two things to survive Android:
