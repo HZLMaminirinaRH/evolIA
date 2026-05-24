@@ -51,9 +51,12 @@ shared state.
   device count and the last-known location fix (all permission-guarded, degrade
   to 0/false); `EvoliaAnchor` ports `ganache_db.py` LOCAL mode, appending each
   sync to `evolia_blockchain_sync.log` (status `local`) every 30s in the service
-  loop. *Remaining:* real on-chain anchoring with **web3j** (status `success`
-  via `EvoliaCore.anchorValue`); real action capture (camera/SMS observers
-  enqueueing to `ActionQueue`).
+  loop; `MediaActionCapture` observes MediaStore and enqueues `photo_taken` /
+  `video_taken` as new photos/videos appear (the MediaWatcher analog; SMS is
+  deferred since READ_SMS is a Play-restricted permission). *Remaining:* real
+  on-chain anchoring with **web3j** (status `success` via
+  `EvoliaCore.anchorValue`), which needs an RPC URL, the deployed contract
+  address and a signing key held in the Android Keystore.
 - **Phase 3 — auth/security.** Replace the Rust TTY auth with a Kotlin screen
   (PIN + `BiometricPrompt`); reuse `evolia-security`'s crypto via JNI, or
   reimplement ChaCha20-Poly1305 / HMAC with Android's crypto APIs.

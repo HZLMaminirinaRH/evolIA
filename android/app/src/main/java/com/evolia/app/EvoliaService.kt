@@ -15,6 +15,7 @@ import com.evolia.app.core.EvoliaAnchor
 import com.evolia.app.core.EvoliaPaths
 import com.evolia.app.core.EvoliaValue
 import com.evolia.app.sensors.AndroidSensors
+import com.evolia.app.sensors.MediaActionCapture
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -79,6 +80,7 @@ class EvoliaService : Service() {
         val value = EvoliaValue(paths)
         value.load()
         val sensors = AndroidSensors(this@EvoliaService).apply { start() }
+        val media = MediaActionCapture(this@EvoliaService, paths).apply { start() }
         val startedAt = System.nanoTime()
         var lastAnchorMs = 0L
         try {
@@ -95,6 +97,7 @@ class EvoliaService : Service() {
             }
         } finally {
             sensors.stop()
+            media.stop()
         }
     }
 

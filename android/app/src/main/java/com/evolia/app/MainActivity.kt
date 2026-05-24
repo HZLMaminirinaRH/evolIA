@@ -87,6 +87,12 @@ class MainActivity : AppCompatActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             perms += Manifest.permission.BLUETOOTH_SCAN
         }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            perms += Manifest.permission.READ_MEDIA_IMAGES
+            perms += Manifest.permission.READ_MEDIA_VIDEO
+        } else {
+            perms += Manifest.permission.READ_EXTERNAL_STORAGE
+        }
         return perms.toTypedArray()
     }
 
