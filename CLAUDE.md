@@ -47,6 +47,9 @@ python/                  services that produce/consume the shared state
   evolia_bitcoin.py      V -> satoshi conversion + wallet/conversion state
   dashboard.py           read-only aggregation of the shared state
 contracts/               EvoliaCore.sol + prebuilt EvoliaCore.json (abi+bytecode)
+android/                 Plan B: Kotlin app — foreground service supervising the
+                         Go binaries (see android/README.md). Scaffold; built in
+                         Android Studio, not in CI (no Android SDK here).
 ```
 
 On-chain anchoring is optional and self-contained: `contracts/EvoliaCore.json`
