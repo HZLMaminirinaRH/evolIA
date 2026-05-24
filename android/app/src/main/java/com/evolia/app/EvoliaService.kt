@@ -10,6 +10,10 @@ import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
+import com.evolia.app.core.ActionQueue
+import com.evolia.app.core.EvoliaPaths
+import com.evolia.app.core.EvoliaValue
+import com.evolia.app.sensors.AndroidSensors
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -57,11 +61,34 @@ class EvoliaService : Service() {
         startForeground(NOTIF_ID, buildNotification("Supervision des services Evolia…"))
 
         val home = File(filesDir, "evolia").apply { mkdirs() }
+
+        // Native value engine (Phase 2): runs in-process, no Python, no signal 9.
+        startValueLoop(home)
+
+        // Supervise the prebuilt Go binaries if they were packaged (Phase 1).
         val nativeDir = applicationInfo.nativeLibraryDir
         for (name in binaries) {
             superviseBinary(File(nativeDir, name), home)
         }
         return START_STICKY
+    }
+
+    private fun startValueLoop(home: File) = scope.launch {
+        val paths = EvoliaPaths(home)
+        val value = EvoliaValue(paths)
+        value.load()
+        val sensors = AndroidSensors(this@EvoliaService).apply { start() }
+        val startedAt = System.nanoTime()
+        try {
+            while (isActive) {
+                val elapsed = (System.nanoTime() - startedAt) / 1_000_000_000.0
+                for ((kind, count) in ActionQueue.drain(paths)) value.recordAction(kind, count)
+                value.cycle(sensors.sample(), elapsed)
+                delay(CYCLE_MS)
+            }
+        } finally {
+            sensors.stop()
+        }
     }
 
     private fun superviseBinary(binary: File, home: File) = scope.launch {
@@ -117,5 +144,6 @@ class EvoliaService : Service() {
         private const val CHANNEL_ID = "evolia"
         private const val NOTIF_ID = 1
         private const val RESTART_BACKOFF_MS = 3000L
+        private const val CYCLE_MS = 5000L
     }
 }

@@ -48,8 +48,11 @@ python/                  services that produce/consume the shared state
   dashboard.py           read-only aggregation of the shared state
 contracts/               EvoliaCore.sol + prebuilt EvoliaCore.json (abi+bytecode)
 android/                 Plan B: Kotlin app — foreground service supervising the
-                         Go binaries (see android/README.md). Scaffold; built in
-                         Android Studio, not in CI (no Android SDK here).
+                         Go binaries + a native Kotlin port of the value engine
+                         (core/: Evolve, EvoliaValue, ActionQueue, EvoliaPaths;
+                         sensors/AndroidSensors). Mirrors evolia_evolve.py so it
+                         runs without Python (the signal-9 fix). Built in Android
+                         Studio, not in CI (no Android SDK here); see android/README.md.
 ```
 
 On-chain anchoring is optional and self-contained: `contracts/EvoliaCore.json`

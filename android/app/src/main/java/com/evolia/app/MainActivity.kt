@@ -7,6 +7,8 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import com.evolia.app.core.ActionQueue
+import com.evolia.app.core.EvoliaPaths
 import java.io.File
 
 /** Minimal control panel: start/stop the supervisor and show the shared state. */
@@ -41,12 +43,21 @@ class MainActivity : AppCompatActivity() {
             setOnClickListener { status.text = readStatus() }
         }
 
+        val recordVideo = Button(this).apply {
+            text = "Action: vidéo (+8 BTC-e)"
+            setOnClickListener {
+                ActionQueue.enqueue(EvoliaPaths(File(filesDir, "evolia")), "video_taken")
+                status.text = "Action enregistrée (sera prise au prochain cycle)."
+            }
+        }
+
         setContentView(
             LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(40, 80, 40, 40)
                 addView(start)
                 addView(stop)
+                addView(recordVideo)
                 addView(refresh)
                 addView(status)
             },
