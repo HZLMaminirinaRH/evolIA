@@ -87,3 +87,52 @@ explicitly (e.g. from a Termux:Tasker shortcut or widget):
 ```sh
 python3 ~/evolia/evolia_actions.py record screen_input 1
 ```
+
+## 8. Staying alive on Android (avoiding signal 9)
+
+`evolia-start` already does two things to survive Android:
+
+- it takes a **CPU wake lock** (`termux-wake-lock`) automatically, and
+  `evolia-stop` releases it (`termux-wake-unlock`);
+- it launches every service in its **own session** (`setsid`), so the services
+  are detached from the terminal and keep running after `evolia-start` returns
+  and after the terminal is closed.
+
+For maximum resilience on aggressive OEMs (Motorola, Xiaomi, …):
+
+1. Disable battery optimization for **Termux** and **Termux:API**.
+2. Lock the Termux notification / keep its persistent notification.
+3. Install **Termux:Boot** to relaunch on reboot, and consider
+   **termux-services** (runit) which *restarts* a service if Android kills it:
+   ```sh
+   pkg install termux-services
+   ```
+
+Even with all of the above, a pure-Termux background daemon is at the mercy of
+the OEM battery manager. If services keep getting `signal 9`, use Plan B.
+
+## 9. Plan B — a thin Kotlin foreground-service app
+
+The Android-sanctioned way to run persistently is a **foreground Service** with
+an ongoing notification; Android will not kill it the way it kills background
+Termux processes. The good news: **we do not rewrite the project**. The Kotlin
+app only needs to *supervise the binaries we already built*.
+
+Sketch:
+
+1. Bundle the compiled binaries in the APK:
+   - Rust: `evolia-start`, `evolia-stop`
+   - Go: `evolia-net`, `evolia-mesh-sync`, `evolia-bridge`
+   - Python services + a Python runtime (e.g. Chaquopy, or call the Termux
+     Python), or port `evolia_run`/`evolia_value` to Kotlin later.
+   Place them under the app's `nativeLibraryDir` / `filesDir`.
+2. A `ForegroundService` (with `startForeground()` + a notification) sets
+   `EVOLIA_HOME` to the app's files dir and `Runtime.exec()`s the services,
+   restarting any that exit. This reuses the exact same shared-file protocol.
+3. Acquire a `PARTIAL_WAKE_LOCK` in the service for CPU-while-screen-off.
+4. Optional UI: render the dashboard snapshot (read `evolia_identity_state.json`
+   etc.) in a simple Compose screen.
+
+This keeps the Rust security spine and the Go networking intact and swaps only
+the *process supervisor* (Termux shell → Android foreground service). It is the
+recommended path if Termux persistence proves unreliable on the device.

@@ -67,6 +67,9 @@ fn main() -> Result<()> {
     std::fs::remove_file(&pids_path).ok();
     std::fs::remove_file(evolia_core::session_file()).ok();
 
+    // Release the Termux CPU wake lock taken by evolia-start (no-op off-device).
+    let _ = std::process::Command::new("termux-wake-unlock").status();
+
     println!("\n{bar}");
     println!("✅ Services arrêtés, session effacée.");
     println!("{bar}");

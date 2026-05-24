@@ -9,6 +9,7 @@ use anyhow::Result;
 use nix::sys::signal::kill;
 use nix::unistd::Pid;
 use serde::{Deserialize, Serialize};
+use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
@@ -118,16 +119,26 @@ fn launch(spec: &ServiceSpec, home: &Path, dev: &str, token: &str) -> Option<u32
         .ok()?;
     let err = out.try_clone().ok()?;
 
-    match Command::new(&spec.command)
-        .args(&spec.args)
+    let mut cmd = Command::new(&spec.command);
+    cmd.args(&spec.args)
         .current_dir(home)
         .env("EVOLIA_SESSION_TOKEN", token)
         .env("EVOLIA_DEVICE_ID", dev)
         .stdin(Stdio::null())
         .stdout(Stdio::from(out))
-        .stderr(Stdio::from(err))
-        .spawn()
-    {
+        .stderr(Stdio::from(err));
+
+    // Detach each service into its own session so it survives the launcher
+    // exiting and is not killed when the Termux terminal/session goes away.
+    // setsid() is async-signal-safe, so it is sound to call from pre_exec.
+    unsafe {
+        cmd.pre_exec(|| {
+            let _ = nix::unistd::setsid();
+            Ok(())
+        });
+    }
+
+    match cmd.spawn() {
         Ok(child) => {
             println!(
                 "✅ {} (pid {}) → logs/{}.log",
@@ -195,6 +206,10 @@ fn main() -> Result<()> {
     let session_path = evolia_core::session_file();
     std::fs::write(&session_path, serde_json::to_string_pretty(&session)?)?;
     evolia_core::set_owner_only(&session_path).ok();
+
+    // Hold a Termux CPU wake lock so Android does not suspend the services
+    // (no-op off-device; released by evolia-stop).
+    let _ = std::process::Command::new("termux-wake-lock").status();
 
     // Launch services.
     println!("\n🚀 Lancement des services…");
