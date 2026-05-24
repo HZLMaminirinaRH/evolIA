@@ -46,12 +46,14 @@ shared state.
 ## Roadmap
 
 - **Phase 2b — finish the value layer.** *Done:* runtime permissions
-  (location / BLUETOOTH_SCAN / POST_NOTIFICATIONS) requested before start, and
-  `AndroidSensors` now feeds the formula real WiFi scan counts, a continuous BLE
+  (location / BLUETOOTH_SCAN / POST_NOTIFICATIONS) requested before start;
+  `AndroidSensors` feeds the formula real WiFi scan counts, a continuous BLE
   device count and the last-known location fix (all permission-guarded, degrade
-  to 0/false). *Remaining:* real action capture (camera/SMS observers enqueueing
-  to `ActionQueue`); anchor `total_v` on-chain with **web3j** (the web3 analog of
-  `ganache_db.py`).
+  to 0/false); `EvoliaAnchor` ports `ganache_db.py` LOCAL mode, appending each
+  sync to `evolia_blockchain_sync.log` (status `local`) every 30s in the service
+  loop. *Remaining:* real on-chain anchoring with **web3j** (status `success`
+  via `EvoliaCore.anchorValue`); real action capture (camera/SMS observers
+  enqueueing to `ActionQueue`).
 - **Phase 3 — auth/security.** Replace the Rust TTY auth with a Kotlin screen
   (PIN + `BiometricPrompt`); reuse `evolia-security`'s crypto via JNI, or
   reimplement ChaCha20-Poly1305 / HMAC with Android's crypto APIs.

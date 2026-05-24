@@ -11,6 +11,7 @@ import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import com.evolia.app.core.ActionQueue
+import com.evolia.app.core.EvoliaAnchor
 import com.evolia.app.core.EvoliaPaths
 import com.evolia.app.core.EvoliaValue
 import com.evolia.app.sensors.AndroidSensors
@@ -79,11 +80,17 @@ class EvoliaService : Service() {
         value.load()
         val sensors = AndroidSensors(this@EvoliaService).apply { start() }
         val startedAt = System.nanoTime()
+        var lastAnchorMs = 0L
         try {
             while (isActive) {
                 val elapsed = (System.nanoTime() - startedAt) / 1_000_000_000.0
                 for ((kind, count) in ActionQueue.drain(paths)) value.recordAction(kind, count)
                 value.cycle(sensors.sample(), elapsed)
+                val nowMs = System.currentTimeMillis()
+                if (nowMs - lastAnchorMs >= ANCHOR_MS) {
+                    EvoliaAnchor.syncOnce(paths)
+                    lastAnchorMs = nowMs
+                }
                 delay(CYCLE_MS)
             }
         } finally {
@@ -145,5 +152,6 @@ class EvoliaService : Service() {
         private const val NOTIF_ID = 1
         private const val RESTART_BACKOFF_MS = 3000L
         private const val CYCLE_MS = 5000L
+        private const val ANCHOR_MS = 30_000L
     }
 }
