@@ -1,0 +1,7 @@
+# The value model (evolia_value.py) and sensor readers (evolia_sensors.py)
+# use only the Python standard library. Sensor access is via the termux-api
+# CLIs at runtime (termux-sensor, termux-location, termux-wifi-scaninfo,
+# termux-bluetooth-scaninfo) — no Python packages required.
+#
+# Other evolIA services that will land here have their own deps; add them
+# when those services are ported (e.g. requests, web3, bitcoinlib, flask).
