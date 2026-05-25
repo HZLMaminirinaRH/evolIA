@@ -44,6 +44,9 @@ shared state.
    ```
 3. Install the APK, grant the notification permission, tap **Démarrer Evolia**.
 
+To check on-device behaviour (sensors, capture, on-chain anchoring, the auth
+gate) that CI cannot, follow the step-by-step [device validation guide](VALIDATION.md).
+
 ## Roadmap
 
 - **Phase 2b — finish the value layer. _Done._** Runtime permissions
