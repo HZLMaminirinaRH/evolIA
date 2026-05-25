@@ -63,5 +63,6 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("org.web3j:core:4.8.7-android")
+    implementation("org.bouncycastle:bcprov-jdk15on:1.70")
     testImplementation("junit:junit:4.13.2")
 }

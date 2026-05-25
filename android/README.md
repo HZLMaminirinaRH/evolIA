@@ -63,9 +63,14 @@ shared state.
   `evolia_deployment.json` — the same file the Python side uses. With no RPC
   configured or no node reachable it degrades to a logged LOCAL entry, exactly
   like Python.
-- **Phase 3 — auth/security.** Replace the Rust TTY auth with a Kotlin screen
-  (PIN + `BiometricPrompt`); reuse `evolia-security`'s crypto via JNI, or
-  reimplement ChaCha20-Poly1305 / HMAC with Android's crypto APIs.
+- **Phase 3 — auth/security.** *Done (3a, crypto core):* a Kotlin reimplementation
+  (no JNI) under `security/` — `Argon2Phc` (Argon2id PHC hashing, the
+  evolia-auth port) and `Security` (master key = Argon2id over SHA-256(device_id),
+  ChaCha20-Poly1305 AEAD, device-bound session tokens, HMAC-SHA256 signatures —
+  the evolia-security port), backed by BouncyCastle and unit-tested on the JVM
+  mirroring the Rust suites (roundtrip, wrong-key, expiry, device-binding).
+  *Remaining (3b, UI gate):* persist the `AuthConfig` (`.evolia_auth.json`),
+  first-run setup, and gate the service behind a PIN screen + `BiometricPrompt`.
 
 The Kotlin core mirrors `evolia_evolve.py` line-for-line; reference outputs
 (at-rest `V=0`, full-activity `V≈0.6109`, BLE > WiFi) match the Python core.
