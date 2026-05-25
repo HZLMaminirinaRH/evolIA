@@ -9,8 +9,10 @@ package bridge
 
 import (
 	"encoding/json"
+	"net"
 	"net/http"
 	"os"
+	"time"
 
 	"evolia/defense"
 	"evolia/mesh"
@@ -94,6 +96,13 @@ func StoreBlock(vault, device string, vValue float64) (string, error) {
 	return mesh.StorePeerBlock(vault, device, vValue)
 }
 
+func clientIP(r *http.Request) string {
+	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+		return host
+	}
+	return r.RemoteAddr
+}
+
 func writeJSON(w http.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -107,6 +116,9 @@ func NewServer(deviceID, vault string, key []byte, def *defense.AdaptiveDefense)
 	if def == nil {
 		def = defense.New(64)
 	}
+	// The intake throttle hardens as the defense absorbs attacks: under a flood
+	// it squeezes each source toward a floor; it relaxes as the buffer decays.
+	gate := defense.NewGate(def, time.Now)
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -116,8 +128,9 @@ func NewServer(deviceID, vault string, key []byte, def *defense.AdaptiveDefense)
 	})
 
 	mux.HandleFunc("/defense", func(w http.ResponseWriter, r *http.Request) {
+		lvl := def.Level()
 		writeJSON(w, http.StatusOK, map[string]any{
-			"defense_level": def.Level(), "buffered": def.Len(),
+			"defense_level": lvl, "buffered": def.Len(), "throttle_pressure": defense.Pressure(lvl),
 		})
 	})
 
@@ -128,6 +141,10 @@ func NewServer(deviceID, vault string, key []byte, def *defense.AdaptiveDefense)
 	mux.HandleFunc("/block", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"status": "error"})
+			return
+		}
+		if !gate.Allow(clientIP(r)) {
+			writeJSON(w, http.StatusTooManyRequests, map[string]any{"status": "throttled", "reason": "defense pressure"})
 			return
 		}
 		var b Block
@@ -160,6 +177,10 @@ func NewServer(deviceID, vault string, key []byte, def *defense.AdaptiveDefense)
 	mux.HandleFunc("/sync", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"status": "error"})
+			return
+		}
+		if !gate.Allow(clientIP(r)) {
+			writeJSON(w, http.StatusTooManyRequests, map[string]any{"status": "throttled", "reason": "defense pressure"})
 			return
 		}
 		var s struct {

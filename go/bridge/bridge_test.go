@@ -138,6 +138,29 @@ func TestBridgeDefenseHardensOnHostileInput(t *testing.T) {
 	}
 }
 
+func TestBridgeThrottlesUnderSustainedPressure(t *testing.T) {
+	t.Setenv("EVOLIA_HOME", t.TempDir())
+	def := defense.New(64)
+	// Saturate the absorbed defense so the intake throttle sits at its floor.
+	for i := 0; i < 12; i++ {
+		def.Record(defense.SQLInjection)
+	}
+	srv := NewServer("dev-1", paths.MeshVault(), nil, def)
+
+	post := func() int {
+		rec := httptest.NewRecorder()
+		srv.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/block",
+			strings.NewReader(`{"source_device":"peerX","v_value":1}`)))
+		return rec.Code
+	}
+	// The floor burst admits a couple, then a flood from the same source is
+	// throttled with 429 — without ever being recorded as a fresh attack.
+	codes := []int{post(), post(), post(), post()}
+	if codes[len(codes)-1] != http.StatusTooManyRequests {
+		t.Fatalf("a flood under saturated defense must be throttled, got %v", codes)
+	}
+}
+
 func TestBlockRejectsBadInput(t *testing.T) {
 	srv := NewServer("dev-1", t.TempDir(), nil, nil)
 	rec := httptest.NewRecorder()

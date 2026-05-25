@@ -107,6 +107,14 @@ Python `evolia_paths`, Go `mesh.Home`), so the services communicate through file
   retaliates. The defense also **relaxes** when the pressure stops: `mesh-sync` calls `Decay()`
   on each quiet cycle (no hostile datagram since the last) and `evolia-bridge` decays on a ticker,
   so the level breathes back down instead of only ever climbing.
+- The absorbed defense is now **load-bearing**, not just reported: it actuates a per-source intake
+  throttle (`defense.Gate`, a token bucket whose burst/refill shrink as the buffer fills, with a
+  guaranteed floor + bounded source table). A sustained flood is squeezed toward the floor and the
+  gate reopens as the buffer decays — wired into `mesh-sync`'s UDP receive (drop, never re-recorded
+  as an attack, so it can't feed itself) and `evolia-bridge`'s `/block`+`/sync` (HTTP 429). This is
+  the live, operational instantiation of `evolia-security::evolutive::a_global`
+  (`defense.NetIntensity` couples the three flows on real signals — attack rate, peer block rate,
+  the buffer level — with `D_evo` as the counterweight); the Rust `a_global` remains the formal spec.
 - Both intake paths store a peer block **keyed by device id** (`recv_<device>.json`) and overwrite
   on re-send — the UDP receiver (`mesh.StoreIncoming`) and the HTTP bridge (`bridge.StoreBlock`,
   via the shared `mesh.StorePeerBlock`) — so `TotalV` counts each peer once and never inflates

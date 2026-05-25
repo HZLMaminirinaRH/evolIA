@@ -11,6 +11,7 @@ package defense
 import (
 	"strings"
 	"sync"
+	"time"
 )
 
 // AttackKind classifies absorbed hostile input; severity feeds the level.
@@ -95,6 +96,115 @@ func (d *AdaptiveDefense) sum() float64 {
 		total += s
 	}
 	return total
+}
+
+// --- evolutive intensity coupling + admission throttle -----------------------
+//
+// NetIntensity is the operational instantiation of evolia-security's a_global:
+//
+//	I = A_evo + P_free − D_evo
+//
+// evaluated on the services' live signals instead of the integral over assumed
+// dynamics. A_evo is the recent attack pressure, P_free the passive propagation
+// (mesh activity), D_evo the absorbed defense (the buffer Level). Because D_evo
+// subtracts, the net intensity falls as evolIA absorbs more — it "wins" the more
+// it is attacked. Positive and rising means pressure currently outpaces defense.
+func NetIntensity(aEvo, pFree, dEvo float64) float64 {
+	return aEvo + pFree - dEvo
+}
+
+const (
+	// pressureSaturation is the absorbed-defense level at which the admission
+	// throttle reaches its floor; beyond it there is no further tightening.
+	pressureSaturation = 10.0
+
+	admitMaxBurst   = 20.0 // per-source tokens at rest (calm)
+	admitFloorBurst = 2.0  // guaranteed burst even at full pressure
+	admitMaxRate    = 10.0 // tokens/sec at rest
+	admitFloorRate  = 1.0  // tokens/sec at full pressure
+
+	gateMaxSources = 1024 // bound the per-source table against source churn
+)
+
+// Pressure maps an absorbed-defense level to a 0..1 throttle pressure: 0 when
+// calm, 1 once the level saturates. Continuous, so the throttle cannot flap.
+func Pressure(level float64) float64 {
+	p := level / pressureSaturation
+	if p < 0 {
+		return 0
+	}
+	if p > 1 {
+		return 1
+	}
+	return p
+}
+
+// Gate is a per-source admission throttle whose burst and refill shrink as the
+// absorbed defense rises, so a sustained flood is squeezed toward a guaranteed
+// floor while a slow legitimate peer still passes. Throttling is pure
+// non-action — a denied datagram is dropped, never answered or retaliated
+// against — and it relaxes automatically as the defense buffer decays. Per-IP
+// limiting carries the usual source-spoofing caveat; the floor stays small.
+type Gate struct {
+	def *AdaptiveDefense
+	now func() time.Time
+
+	mu      sync.Mutex
+	buckets map[string]*tokenBucket
+}
+
+type tokenBucket struct {
+	tokens float64
+	last   time.Time
+}
+
+// NewGate builds a throttle bound to def's live level. now defaults to
+// time.Now; tests inject a clock to advance refills deterministically.
+func NewGate(def *AdaptiveDefense, now func() time.Time) *Gate {
+	if def == nil {
+		def = New(64)
+	}
+	if now == nil {
+		now = time.Now
+	}
+	return &Gate{def: def, now: now, buckets: make(map[string]*tokenBucket)}
+}
+
+// Allow reports whether input from src may be admitted now, consuming one token
+// when it can. Under rising defense pressure the per-source burst and refill
+// rate shrink toward the floor, throttling a flood while sparing slow peers.
+func (g *Gate) Allow(src string) bool {
+	p := Pressure(g.def.Level())
+	burst := admitMaxBurst - p*(admitMaxBurst-admitFloorBurst)
+	rate := admitMaxRate - p*(admitMaxRate-admitFloorRate)
+
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	now := g.now()
+	b := g.buckets[src]
+	if b == nil {
+		// Bound the table so source churn cannot exhaust memory; evict an
+		// arbitrary entry when full (its bucket simply resets when next seen).
+		if len(g.buckets) >= gateMaxSources {
+			for k := range g.buckets {
+				delete(g.buckets, k)
+				break
+			}
+		}
+		b = &tokenBucket{tokens: burst, last: now}
+		g.buckets[src] = b
+	} else if elapsed := now.Sub(b.last).Seconds(); elapsed > 0 {
+		b.tokens += elapsed * rate
+		b.last = now
+	}
+	if b.tokens > burst { // clamp when rising pressure has shrunk the burst
+		b.tokens = burst
+	}
+	if b.tokens >= 1 {
+		b.tokens--
+		return true
+	}
+	return false
 }
 
 // LooksLikeInjection flags SQL-injection-like payloads on control inputs

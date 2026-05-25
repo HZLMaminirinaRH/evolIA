@@ -52,6 +52,7 @@ func main() {
 	self := paths.DeviceID()
 	key := []byte(os.Getenv("EVOLIA_MESH_KEY"))
 	def := defense.New(64)
+	gate := defense.NewGate(def, time.Now)
 	cycle := cycleInterval()
 
 	logf := newLogger(paths.MeshSyncLog())
@@ -60,12 +61,14 @@ func main() {
 
 	seen := map[string]bool{}
 	var mu sync.Mutex
-	var attacks atomic.Uint64
+	var attacks, received, throttled atomic.Uint64
 
 	// Receive blocks propagated by peers and store them in the vault.
-	go listenBlocks(vault, seen, &mu, key, def, &attacks, logf)
+	go listenBlocks(vault, seen, &mu, key, def, gate, &attacks, &received, &throttled, logf)
 
 	prevAttacks := attacks.Load()
+	prevReceived := received.Load()
+	prevThrottled := throttled.Load()
 	for {
 		// Peers come from EVOLIA_PEERS plus whatever evolia-net has discovered.
 		peers := dedupe(append(parsePeers(os.Getenv("EVOLIA_PEERS")), mesh.LoadPeers()...))
@@ -87,21 +90,40 @@ func main() {
 		}
 		time.Sleep(cycle)
 
+		// Couple the three live flows into the a_global net intensity, with the
+		// absorbed defense (D_evo) as the counterweight: A_evo = attacks this
+		// cycle, P_free = peer blocks received (passive propagation), D_evo =
+		// the buffer level. Surfaced only when something happened, so quiet
+		// cycles stay silent (battery).
+		curAttacks := attacks.Load()
+		curReceived := received.Load()
+		curThrottled := throttled.Load()
+		aEvo := float64(curAttacks - prevAttacks)
+		pFree := 0.1 * float64(curReceived-prevReceived)
+		if curAttacks != prevAttacks || curThrottled != prevThrottled {
+			logf(fmt.Sprintf("intensity net=%.2f a_evo=%.1f p_free=%.2f d_evo=%.2f throttled=%d",
+				defense.NetIntensity(aEvo, pFree, def.Level()), aEvo, pFree, def.Level(),
+				curThrottled-prevThrottled))
+		}
+
 		// On a quiet cycle (no hostile datagram since the last one) relax the
 		// adaptive defense one notch, so it breathes back down once attacks stop.
-		if cur := attacks.Load(); cur == prevAttacks {
+		if curAttacks == prevAttacks {
 			def.Decay()
-		} else {
-			prevAttacks = cur
 		}
+		prevAttacks = curAttacks
+		prevReceived = curReceived
+		prevThrottled = curThrottled
 	}
 }
 
 // listenBlocks receives propagated blocks over UDP, verifies + stores them, and
 // hardens the defense when input is hostile. Each stored block is marked seen
 // under the same lock the relay uses, so a received block is never forwarded
-// again (no amplification loops).
-func listenBlocks(vault string, seen map[string]bool, mu *sync.Mutex, key []byte, def *defense.AdaptiveDefense, attacks *atomic.Uint64, logf func(string)) {
+// again (no amplification loops). The gate throttles intake per source under
+// defense pressure; a throttled datagram is dropped (not recorded as an attack,
+// so the throttle can never feed itself into a runaway).
+func listenBlocks(vault string, seen map[string]bool, mu *sync.Mutex, key []byte, def *defense.AdaptiveDefense, gate *defense.Gate, attacks, received, throttled *atomic.Uint64, logf func(string)) {
 	addr, err := net.ResolveUDPAddr("udp", blockAddr)
 	if err != nil {
 		logf("block listen resolve error: " + err.Error())
@@ -120,6 +142,10 @@ func listenBlocks(vault string, seen map[string]bool, mu *sync.Mutex, key []byte
 		if err != nil {
 			continue
 		}
+		if !gate.Allow(src.IP.String()) {
+			throttled.Add(1)
+			continue
+		}
 		mu.Lock()
 		name, params, storeErr := mesh.StoreIncoming(vault, buf[:n], key)
 		if storeErr == nil {
@@ -129,6 +155,7 @@ func listenBlocks(vault string, seen map[string]bool, mu *sync.Mutex, key []byte
 
 		switch {
 		case storeErr == nil:
+			received.Add(1)
 			bridge.FuseIncoming(params)
 			logf("received " + name + " from " + src.IP.String())
 		case errors.Is(storeErr, mesh.ErrInjection):

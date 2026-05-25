@@ -41,6 +41,12 @@ pub type FuncGradXi = fn(&[f64], f64, f64) -> Vec<f64>;
 
 /// Combined intensity: `A_global = A_evo + P_free − D_evo`, integrated over
 /// `[0, t_max)` with step `dt`.
+///
+/// This is the **formal spec** of the coupling. The live, operational form runs
+/// in the Go `defense` package (`NetIntensity` + the admission `Gate`), where
+/// the three flows are bound to real service signals (attack rate, peer block
+/// rate, the absorbed-defense buffer) and the `D_evo` counterweight actuates a
+/// per-source intake throttle that hardens under attack and relaxes on decay.
 #[allow(clippy::too_many_arguments)]
 pub fn a_global(
     t_max: f64,
