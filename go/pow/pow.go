@@ -35,9 +35,11 @@ import (
 // SensorFloor mirrors evolia_value.SENSOR_FLOOR.
 const SensorFloor = 1.0
 
-// maxElapsed bounds the work window a single block may claim (seconds); a cycle
-// is normally a few seconds, this leaves room for a device that was asleep.
-const maxElapsed = 120.0
+// maxElapsed bounds the work window a single block may claim (seconds). Kept
+// generous (one hour) because Android suspends devices aggressively, so a cycle
+// that drains a sleep-time backlog still validates rather than being mistaken
+// for a forgery; the per-action rate cap remains the real anti-inflation bound.
+const maxElapsed = 3600.0
 
 // ActionRates mirrors python/evolia_evolve.py ACTION_RATES: base BTC-e per action.
 var ActionRates = map[string]float64{

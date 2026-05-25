@@ -100,6 +100,9 @@ pub fn a_global(
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AttackKind {
     SqlInjection,
+    /// A value claim not backed by sound cognitive work (see the Go `pow`
+    /// validator): fabricating value is as serious as an injection attempt.
+    ForgedWork,
     BadSignature,
     Unauthorized,
     Malformed,
@@ -110,6 +113,7 @@ impl AttackKind {
     pub fn base_severity(self) -> f64 {
         match self {
             AttackKind::SqlInjection => 1.0,
+            AttackKind::ForgedWork => 1.0,
             AttackKind::BadSignature => 0.8,
             AttackKind::Unauthorized => 0.6,
             AttackKind::Malformed => 0.3,

@@ -131,8 +131,10 @@ func TestBridgeDefenseHardensOnHostileInput(t *testing.T) {
 		t.Fatalf("defense must have risen after hostile input, got %v", def.Level())
 	}
 
-	// A correctly signed block is accepted.
-	good := `{"source_device":"peerX","v_value":4.5,"sig":"` + mesh.SignBlock(key, "peerX", 4.5) + `"}`
+	// A correctly signed block carrying a valid proof of work is accepted
+	// (screen_input×90 at v=0 yields exactly 4.5).
+	good := `{"source_device":"peerX","v_value":4.5,"sig":"` + mesh.SignBlock(key, "peerX", 4.5) +
+		`","work":{"v_prev":0,"actions":{"screen_input":90},"v":0,"dt":5}}`
 	if code := post(good); code != http.StatusOK {
 		t.Fatalf("signed block: want 200, got %d", code)
 	}

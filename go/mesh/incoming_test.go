@@ -5,6 +5,8 @@ import (
 	"errors"
 	"path/filepath"
 	"testing"
+
+	"evolia/pow"
 )
 
 func TestStoreIncomingWritesAndCounts(t *testing.T) {
@@ -46,12 +48,14 @@ func TestStoreIncomingSignature(t *testing.T) {
 	dir := t.TempDir()
 	key := []byte("fleet-secret")
 
-	// A correctly signed block is accepted and its params returned.
+	// A correctly signed block, carrying a valid proof of work (screen_input×40
+	// at v=0 yields exactly 2.0), is accepted and its params returned.
 	signed, _ := json.Marshal(Block{
 		Device: "d1",
 		VValue: 2.0,
 		Sig:    SignBlock(key, "d1", 2.0),
 		Params: map[string]float64{"ALPHA": 0.3},
+		Work:   &pow.WorkProof{VPrev: 0, Actions: map[string]int{"screen_input": 40}, V: 0, Dt: 5},
 	})
 	name, params, err := StoreIncoming(dir, signed, key)
 	if err != nil {
@@ -65,6 +69,43 @@ func TestStoreIncomingSignature(t *testing.T) {
 	bad, _ := json.Marshal(Block{Device: "d2", VValue: 2.0, Sig: "deadbeef"})
 	if _, _, err := StoreIncoming(dir, bad, key); !errors.Is(err, ErrBadSignature) {
 		t.Fatalf("want ErrBadSignature, got %v", err)
+	}
+}
+
+func TestStoreIncomingProofOfWork(t *testing.T) {
+	dir := t.TempDir()
+	key := []byte("fleet-secret")
+	mk := func(device string, v float64, w *pow.WorkProof) []byte {
+		data, _ := json.Marshal(Block{Device: device, VValue: v, Sig: SignBlock(key, device, v), Work: w})
+		return data
+	}
+
+	// Honest first increment: 0 -> 2.0 (screen_input×40 at v=0).
+	if _, _, err := StoreIncoming(dir, mk("d1", 2.0, &pow.WorkProof{VPrev: 0, Actions: map[string]int{"screen_input": 40}, V: 0, Dt: 5}), key); err != nil {
+		t.Fatalf("honest work must be accepted: %v", err)
+	}
+	// Fabricated value with trivial declared work is rejected and scored.
+	if _, _, err := StoreIncoming(dir, mk("d1", 1000, &pow.WorkProof{VPrev: 2.0, Actions: map[string]int{"screen_input": 1}, V: 0, Dt: 5}), key); !errors.Is(err, ErrForgedWork) {
+		t.Fatalf("fabricated value must be ErrForgedWork, got %v", err)
+	}
+	// A keyed block carrying no proof at all is rejected (no omit-to-bypass).
+	noproof, _ := json.Marshal(Block{Device: "d1", VValue: 3.0, Sig: SignBlock(key, "d1", 3.0)})
+	if _, _, err := StoreIncoming(dir, noproof, key); !errors.Is(err, ErrForgedWork) {
+		t.Fatalf("keyed block without proof must be ErrForgedWork, got %v", err)
+	}
+	// Honest chained increment: 2.0 -> 4.5 (photo_taken×1 at v=0).
+	if _, _, err := StoreIncoming(dir, mk("d1", 4.5, &pow.WorkProof{VPrev: 2.0, Actions: map[string]int{"photo_taken": 1}, V: 0, Dt: 5}), key); err != nil {
+		t.Fatalf("honest chained increment must be accepted: %v", err)
+	}
+	if got := TotalV(dir); got != 4.5 {
+		t.Fatalf("want 4.5 after chained increments, got %v", got)
+	}
+	// Replay of an old value does not advance our record: stale, value unchanged.
+	if _, _, err := StoreIncoming(dir, mk("d1", 2.0, &pow.WorkProof{VPrev: 0, Actions: map[string]int{"screen_input": 40}, V: 0, Dt: 5}), key); !errors.Is(err, ErrStale) {
+		t.Fatalf("stale replay must be ErrStale, got %v", err)
+	}
+	if got := TotalV(dir); got != 4.5 {
+		t.Fatalf("stale replay must not change the stored value, got %v", got)
 	}
 }
 

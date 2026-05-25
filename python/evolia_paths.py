@@ -75,6 +75,12 @@ def conversion_history() -> Path:
     return evolia_home() / "evolia_btc_conversion_history.json"
 
 
+def work_proof() -> Path:
+    """Latest cycle's cognitive proof-of-work, attached by mesh-sync to the
+    value it emits so peers can validate the increment (see go/pow)."""
+    return evolia_home() / "evolia_work_proof.json"
+
+
 def mesh_vault() -> Path:
     return evolia_home() / "evolia_mesh_vault"
 

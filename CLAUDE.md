@@ -30,9 +30,11 @@ rust/                    Cargo workspace — the security spine
 go/                      Go module `evolia` — networking
   paths/                 shared EVOLIA_HOME layout (Go mirror of evolia-core)
   defense/               adaptive defense (Go mirror of evolia-security::evolutive): bounded
-                         attack buffer + injection detector (reactive only)
-  mesh/                  block detection + propagation + receive (StoreIncoming) + HMAC
-                         sign/verify (SignBlock/VerifyBlock) + LoadPeers + TotalV
+                         attack buffer + injection detector + NetIntensity coupling + intake Gate
+  pow/                   cognitive proof-of-work validator: a value increment must equal
+                         base(actions)x(1+v)+floor*v with actions within physical rate caps
+  mesh/                  block detection + propagation + receive (StoreIncoming, PoW-validated) +
+                         HMAC sign/verify (SignBlock/VerifyBlock) + LoadPeers + TotalV
   netdisc/               peer-discovery registry + announce parsing (testable)
   bridge/                peer block-exchange HTTP handlers + param fusion + defense-gated intake
   cmd/mesh-sync/         binary: emit local value (signed) + relay over UDP; receive/verify peer
@@ -43,7 +45,8 @@ python/                  services that produce/consume the shared state
   evolia_paths.py        shared EVOLIA_HOME layout (Python mirror of evolia-core)
   evolia_sensors.py      sensor readers (termux-api), graceful fallback off-device
   evolia_evolve.py       THE evolutive formula (exponential) — the cognitive core
-  evolia_value.py        accumulator: base(actions) x (1+V) + sensor floor
+  evolia_value.py        accumulator: base(actions) x (1+V) + sensor floor; emits a
+                         per-cycle cognitive proof-of-work (evolia_work_proof.json)
   evolia_actions.py      action capture (SMS/photo/video + CLI) -> action queue
   evolia_run.py          main loop: drain action queue + sample sensors + cycle
   evolia_deploy.py       deploy EvoliaCore from the prebuilt artifact (web3)
@@ -115,6 +118,18 @@ Python `evolia_paths`, Go `mesh.Home`), so the services communicate through file
   the live, operational instantiation of `evolia-security::evolutive::a_global`
   (`defense.NetIntensity` couples the three flows on real signals — attack rate, peer block rate,
   the buffer level — with `D_evo` as the counterweight); the Rust `a_global` remains the formal spec.
+- Value claims carry a **cognitive proof-of-work** so a peer cannot fabricate BTC-e: each block
+  declares the work behind its increment (the cycle's actions, the sensor multiplier `v∈[0,1]`,
+  and `dt`), and the receiver (`go/pow`) recomputes that `ΔV = base(actions)·(1+v) + floor·v` and
+  that the declared actions stay within physical **rate caps** (`MaxRatePerSec·dt` — you cannot
+  claim more videos/sms/etc. than time allows). `evolia_value.py` emits the proof each cycle to
+  `evolia_work_proof.json`; `mesh-sync` attaches it to the value it emits (and relays it, since it
+  is persisted in the vault). A **keyed fleet must carry a valid proof** — a signed-but-proofless
+  or non-reconciling block is rejected as `ForgedWork` and feeds the adaptive defense. Each block
+  is self-contained (carries its own declared prior `v_prev`) so validation survives a dropped UDP
+  datagram, while the store path enforces **monotonicity** (value never rolls back; a non-advancing
+  claim is silently dropped as stale). v1 boundary: a key-holder can still set its *baseline* by
+  lying about `v_prev` on first contact (trust-on-first-use); every later increment is bounded.
 - Both intake paths store a peer block **keyed by device id** (`recv_<device>.json`) and overwrite
   on re-send — the UDP receiver (`mesh.StoreIncoming`) and the HTTP bridge (`bridge.StoreBlock`,
   via the shared `mesh.StorePeerBlock`) — so `TotalV` counts each peer once and never inflates

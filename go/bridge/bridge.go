@@ -9,6 +9,7 @@ package bridge
 
 import (
 	"encoding/json"
+	"errors"
 	"net"
 	"net/http"
 	"os"
@@ -17,6 +18,7 @@ import (
 	"evolia/defense"
 	"evolia/mesh"
 	"evolia/paths"
+	"evolia/pow"
 )
 
 // DefaultParams is the starting cognitive-parameter set when none is stored.
@@ -34,6 +36,7 @@ type Block struct {
 	VValue          float64            `json:"v_value"`
 	CognitiveParams map[string]float64 `json:"cognitive_params"`
 	Sig             string             `json:"sig,omitempty"`
+	Work            *pow.WorkProof     `json:"work,omitempty"`
 	Timestamp       string             `json:"timestamp"`
 }
 
@@ -92,8 +95,31 @@ func saveParams(m map[string]float64) {
 // StoreBlock writes a peer block into the mesh vault, keyed by device id so
 // repeated posts from the same peer overwrite rather than accumulate (shared
 // with the UDP intake path, so TotalV never double-counts a peer).
-func StoreBlock(vault, device string, vValue float64) (string, error) {
-	return mesh.StorePeerBlock(vault, device, vValue)
+func StoreBlock(vault, device string, vValue float64, work *pow.WorkProof) (string, error) {
+	return mesh.StorePeerBlock(vault, device, vValue, work)
+}
+
+// checkWork applies the proof-of-work policy to an HTTP value claim: a keyed
+// fleet must carry a proof, and any proof present must validate. It records a
+// ForgedWork attack on rejection. Returns an HTTP status to send (0 = proceed).
+func checkWork(vault, device string, newV float64, work *pow.WorkProof, key []byte, def *defense.AdaptiveDefense, w http.ResponseWriter) bool {
+	if len(key) > 0 && work == nil {
+		lvl := def.Record(defense.ForgedWork)
+		writeJSON(w, http.StatusForbidden, map[string]any{"status": "rejected", "reason": "missing proof of work", "defense": lvl})
+		return false
+	}
+	if work != nil {
+		if err := pow.ValidateBlock(mesh.StoredV(vault, device), newV, *work); err != nil {
+			if errors.Is(err, pow.ErrStale) {
+				writeJSON(w, http.StatusOK, map[string]any{"status": "stale"})
+				return false
+			}
+			lvl := def.Record(defense.ForgedWork)
+			writeJSON(w, http.StatusForbidden, map[string]any{"status": "rejected", "reason": "forged work", "defense": lvl})
+			return false
+		}
+	}
+	return true
 }
 
 func clientIP(r *http.Request) string {
@@ -163,7 +189,10 @@ func NewServer(deviceID, vault string, key []byte, def *defense.AdaptiveDefense)
 			writeJSON(w, http.StatusUnauthorized, map[string]any{"status": "rejected", "reason": "bad signature", "defense": lvl})
 			return
 		}
-		name, err := StoreBlock(vault, b.SourceDevice, b.VValue)
+		if !checkWork(vault, b.SourceDevice, b.VValue, b.Work, key, def, w) {
+			return
+		}
+		name, err := StoreBlock(vault, b.SourceDevice, b.VValue, b.Work)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"status": "error", "reason": err.Error()})
 			return
@@ -184,8 +213,10 @@ func NewServer(deviceID, vault string, key []byte, def *defense.AdaptiveDefense)
 			return
 		}
 		var s struct {
-			DeviceID string  `json:"device_id"`
-			TotalV   float64 `json:"total_v"`
+			DeviceID string         `json:"device_id"`
+			TotalV   float64        `json:"total_v"`
+			Sig      string         `json:"sig,omitempty"`
+			Work     *pow.WorkProof `json:"work,omitempty"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&s); err != nil || s.DeviceID == "" {
 			def.Record(defense.Malformed)
@@ -197,7 +228,15 @@ func NewServer(deviceID, vault string, key []byte, def *defense.AdaptiveDefense)
 			writeJSON(w, http.StatusBadRequest, map[string]any{"status": "rejected", "reason": "injection", "defense": lvl})
 			return
 		}
-		name, err := StoreBlock(vault, s.DeviceID, s.TotalV)
+		if len(key) > 0 && !mesh.VerifyBlock(key, s.DeviceID, s.TotalV, s.Sig) {
+			lvl := def.Record(defense.BadSignature)
+			writeJSON(w, http.StatusUnauthorized, map[string]any{"status": "rejected", "reason": "bad signature", "defense": lvl})
+			return
+		}
+		if !checkWork(vault, s.DeviceID, s.TotalV, s.Work, key, def, w) {
+			return
+		}
+		name, err := StoreBlock(vault, s.DeviceID, s.TotalV, s.Work)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"status": "error", "reason": err.Error()})
 			return

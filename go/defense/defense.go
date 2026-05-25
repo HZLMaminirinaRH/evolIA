@@ -22,11 +22,14 @@ const (
 	BadSignature
 	Unauthorized
 	Malformed
+	ForgedWork
 )
 
 func (k AttackKind) severity() float64 {
 	switch k {
 	case SQLInjection:
+		return 1.0
+	case ForgedWork:
 		return 1.0
 	case BadSignature:
 		return 0.8

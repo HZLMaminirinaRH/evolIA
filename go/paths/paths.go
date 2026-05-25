@@ -48,6 +48,10 @@ func WriteFileAtomic(path string, data []byte, perm os.FileMode) error {
 	return nil
 }
 
+// workProofFile is the latest cycle's cognitive proof-of-work, written by the
+// Python value producer and attached by mesh-sync to the value it emits.
+const workProofFile = "evolia_work_proof.json"
+
 // Home resolves EVOLIA_HOME, defaulting to $HOME/evolia.
 func Home() string {
 	if h := os.Getenv("EVOLIA_HOME"); h != "" {
@@ -71,6 +75,10 @@ func PeersFile() string { return filepath.Join(Home(), "evolia_peers.json") }
 
 // CognitiveParams is the fused cognitive-parameter file the bridge maintains.
 func CognitiveParams() string { return filepath.Join(Home(), "evolia_cognitive_params.json") }
+
+// WorkProof is the latest cycle's cognitive proof-of-work the value producer
+// writes and mesh-sync attaches to the value it emits.
+func WorkProof() string { return filepath.Join(Home(), workProofFile) }
 
 // MeshSyncLog, NetworkLog and BridgeLog are the per-service JSON-line logs.
 func MeshSyncLog() string { return filepath.Join(Home(), "evolia_mesh_sync.log") }

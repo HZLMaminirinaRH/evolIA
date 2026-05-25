@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 """Tests for the evolutive formula and the value accumulator (pure logic)."""
 
+import json
 import sys
 import tempfile
 from pathlib import Path
@@ -125,6 +126,28 @@ def test_atomic_write_persists_and_leaves_no_temp():
     assert target.read_text() == "second"
     # No half-written temp file may be left behind on success.
     assert [p.name for p in d.iterdir()] == [target.name]
+
+
+def test_work_proof_reconciles_with_formula():
+    # The emitted proof must let a peer recompute the increment exactly:
+    # ΔV = base(actions)·(1+v) + SENSOR_FLOOR·v. This is the contract the Go
+    # pow validator enforces, so the two must agree to float precision.
+    from evolia_value import SENSOR_FLOOR
+
+    v = EvoliaValue(state_path=_tmp_state())
+    v.record_action("photo_taken", 2)
+    v.record_action("screen_input", 10)
+    v.cycle(SensorSample(accelerometer=6, ble_count=3), elapsed_seconds=5.0)
+
+    proof = json.loads(paths.work_proof().read_text())
+    w = proof["work"]
+    base = sum(ACTION_RATES[k] * c for k, c in w["actions"].items())
+    expected = base * (1.0 + w["v"]) + SENSOR_FLOOR * w["v"]
+    delta = proof["v_value"] - w["v_prev"]
+    assert abs(delta - expected) < 1e-9, (delta, expected)
+    assert 0.0 <= w["v"] <= 1.0
+    assert w["dt"] > 0
+    assert w["actions"] == {"photo_taken": 2, "screen_input": 10}
 
 
 def test_save_is_atomic_no_temp_left():

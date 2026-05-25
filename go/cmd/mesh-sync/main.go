@@ -26,6 +26,7 @@ import (
 	"evolia/defense"
 	"evolia/mesh"
 	"evolia/paths"
+	"evolia/pow"
 )
 
 const blockAddr = ":5555"
@@ -74,8 +75,10 @@ func main() {
 		peers := dedupe(append(parsePeers(os.Getenv("EVOLIA_PEERS")), mesh.LoadPeers()...))
 		params := loadParams(paths.CognitiveParams())
 
-		// Emit this node's current value each cycle (signed, params attached).
-		sendBlock(self, readLocalTotalV(), params, peers, key, logf)
+		// Emit this node's current value each cycle (signed, with its cognitive
+		// proof-of-work and params attached).
+		localV, localWork := readLocalBlock()
+		sendBlock(self, localV, localWork, params, peers, key, logf)
 
 		// Relay any externally-dropped vault block once (received UDP blocks are
 		// marked seen, so they are never re-propagated — no amplification).
@@ -86,7 +89,7 @@ func main() {
 			logf("scan error: " + err.Error())
 		}
 		for _, b := range blocks {
-			sendBlock(b.Device, b.VValue, params, peers, key, logf)
+			sendBlock(b.Device, b.VValue, b.Work, params, peers, key, logf)
 		}
 		time.Sleep(cycle)
 
@@ -158,9 +161,15 @@ func listenBlocks(vault string, seen map[string]bool, mu *sync.Mutex, key []byte
 			received.Add(1)
 			bridge.FuseIncoming(params)
 			logf("received " + name + " from " + src.IP.String())
+		case errors.Is(storeErr, mesh.ErrStale):
+			// Reordered or replayed value that does not advance our record —
+			// not an attack; drop it silently.
 		case errors.Is(storeErr, mesh.ErrInjection):
 			attacks.Add(1)
 			logf(fmt.Sprintf("injection from %s rejected (defense=%.2f)", src.IP.String(), def.Record(defense.SQLInjection)))
+		case errors.Is(storeErr, mesh.ErrForgedWork):
+			attacks.Add(1)
+			logf(fmt.Sprintf("forged work from %s rejected (defense=%.2f)", src.IP.String(), def.Record(defense.ForgedWork)))
 		case errors.Is(storeErr, mesh.ErrBadSignature):
 			attacks.Add(1)
 			logf(fmt.Sprintf("bad signature from %s rejected (defense=%.2f)", src.IP.String(), def.Record(defense.BadSignature)))
@@ -171,7 +180,7 @@ func listenBlocks(vault string, seen map[string]bool, mu *sync.Mutex, key []byte
 	}
 }
 
-func sendBlock(device string, vValue float64, params map[string]float64, peers []string, key []byte, logf func(string)) {
+func sendBlock(device string, vValue float64, work *pow.WorkProof, params map[string]float64, peers []string, key []byte, logf func(string)) {
 	if len(peers) == 0 {
 		logf(fmt.Sprintf("local block device=%s v=%.4f (no peers)", device, vValue))
 		return
@@ -179,6 +188,9 @@ func sendBlock(device string, vValue float64, params map[string]float64, peers [
 	payload := map[string]any{"device_id": device, "v_value": vValue}
 	if len(key) > 0 {
 		payload["sig"] = mesh.SignBlock(key, device, vValue)
+	}
+	if work != nil {
+		payload["work"] = work
 	}
 	if len(params) > 0 {
 		payload["cognitive_params"] = params
@@ -203,6 +215,23 @@ func sendBlock(device string, vValue float64, params map[string]float64, peers [
 		}
 		conn.Close()
 	}
+}
+
+// readLocalBlock returns this node's current value and its cognitive proof-of-
+// work, written each cycle by the Python value producer. When the proof file is
+// absent (producer not running yet) it falls back to the identity-state value
+// with no proof — a keyed fleet will reject such proofless emissions, by design.
+func readLocalBlock() (float64, *pow.WorkProof) {
+	if data, err := os.ReadFile(paths.WorkProof()); err == nil {
+		var p struct {
+			VValue float64        `json:"v_value"`
+			Work   *pow.WorkProof `json:"work"`
+		}
+		if json.Unmarshal(data, &p) == nil && p.Work != nil {
+			return p.VValue, p.Work
+		}
+	}
+	return readLocalTotalV(), nil
 }
 
 func readLocalTotalV() float64 {
