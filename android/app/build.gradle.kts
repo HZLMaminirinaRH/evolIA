@@ -65,4 +65,6 @@ dependencies {
     implementation("org.web3j:core:4.8.7-android")
     implementation("org.bouncycastle:bcprov-jdk15on:1.70")
     testImplementation("junit:junit:4.13.2")
+    // Android stubs org.json in unit tests ("not mocked"); use the real impl.
+    testImplementation("org.json:json:20231013")
 }
