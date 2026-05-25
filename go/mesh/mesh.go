@@ -7,23 +7,58 @@
 package mesh
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
+	"evolia/defense"
 	"evolia/paths"
 )
 
-// Block is the minimal shape read from a mesh vault file.
+// Block is the shape read from a vault file and carried over the wire. Sig and
+// Params are only present on propagated (wire) blocks, not on vault files.
 type Block struct {
-	Name   string  `json:"-"`
-	Device string  `json:"device_id"`
-	VValue float64 `json:"v_value"`
+	Name   string             `json:"-"`
+	Device string             `json:"device_id"`
+	VValue float64            `json:"v_value"`
+	Sig    string             `json:"sig,omitempty"`
+	Params map[string]float64 `json:"cognitive_params,omitempty"`
+}
+
+// Classified intake errors so the defense layer can score the right attack.
+var (
+	ErrMalformed    = errors.New("malformed block")
+	ErrInjection    = errors.New("injection-like device id")
+	ErrBadSignature = errors.New("bad block signature")
+)
+
+// SignBlock returns the HMAC-SHA256 (hex) of a block's value claim under the
+// shared fleet key (EVOLIA_MESH_KEY). The signed message is canonical so it
+// matches across the JSON round-trip.
+func SignBlock(key []byte, device string, vValue float64) string {
+	mac := hmac.New(sha256.New, key)
+	mac.Write([]byte(device + "|" + strconv.FormatFloat(vValue, 'f', -1, 64)))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+// VerifyBlock checks a block signature in constant time.
+func VerifyBlock(key []byte, device string, vValue float64, sig string) bool {
+	want, err := hex.DecodeString(sig)
+	if err != nil {
+		return false
+	}
+	mac := hmac.New(sha256.New, key)
+	mac.Write([]byte(device + "|" + strconv.FormatFloat(vValue, 'f', -1, 64)))
+	return hmac.Equal(want, mac.Sum(nil))
 }
 
 // NewBlocks returns the vault's *.json files not already in seen, marking each
@@ -69,21 +104,31 @@ func TotalV(vault string) float64 {
 	return total
 }
 
-// StoreIncoming parses a block datagram propagated by a peer's mesh-sync and
-// writes it into the local vault, so TotalV and the dashboard pick it up. The
-// file is keyed by device id (recv_<device>.json), so re-sends from the same
-// peer overwrite rather than accumulate. Returns the file name written, which
-// the caller should mark "seen" to avoid re-propagating a received block.
-func StoreIncoming(vault string, data []byte) (string, error) {
+// StoreIncoming validates and stores a block datagram propagated by a peer's
+// mesh-sync, so TotalV and the dashboard pick it up. The file is keyed by device
+// id (recv_<device>.json), so re-sends from the same peer overwrite rather than
+// accumulate. With a non-nil key the block's HMAC signature must verify.
+//
+// Returns the file name written (which the caller should mark "seen" to avoid
+// re-propagating a received block) and any cognitive params carried, or a
+// classified error (ErrMalformed / ErrInjection / ErrBadSignature) the defense
+// layer scores.
+func StoreIncoming(vault string, data []byte, key []byte) (string, map[string]float64, error) {
 	var b Block
 	if err := json.Unmarshal(data, &b); err != nil {
-		return "", err
+		return "", nil, ErrMalformed
 	}
 	if b.Device == "" {
-		return "", errors.New("block missing device_id")
+		return "", nil, ErrMalformed
+	}
+	if defense.LooksLikeInjection(b.Device) {
+		return "", nil, ErrInjection
+	}
+	if len(key) > 0 && !VerifyBlock(key, b.Device, b.VValue, b.Sig) {
+		return "", nil, ErrBadSignature
 	}
 	if err := os.MkdirAll(vault, 0o700); err != nil {
-		return "", err
+		return "", nil, err
 	}
 	name := fmt.Sprintf("recv_%s.json", sanitizeDevice(b.Device))
 	payload, _ := json.Marshal(map[string]any{
@@ -92,9 +137,9 @@ func StoreIncoming(vault string, data []byte) (string, error) {
 		"timestamp": time.Now().UTC().Format(time.RFC3339),
 	})
 	if err := os.WriteFile(filepath.Join(vault, name), payload, 0o600); err != nil {
-		return "", err
+		return "", nil, err
 	}
-	return name, nil
+	return name, b.Params, nil
 }
 
 func sanitizeDevice(s string) string {

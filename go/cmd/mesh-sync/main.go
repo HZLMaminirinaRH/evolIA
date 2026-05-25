@@ -1,13 +1,18 @@
-// Command mesh-sync watches the evolIA mesh vault and propagates new blocks.
+// Command mesh-sync emits this node's value to peers and receives theirs.
 //
-// Every cycle it detects vault files it has not seen and either forwards them
-// to configured peers over UDP (EVOLIA_PEERS, comma-separated host[:port],
-// default port 5555) or, with no peers, logs them locally. Events are written
-// to evolia_mesh_sync.log under EVOLIA_HOME. Standard library only.
+// Each cycle it emits the local value (read from evolia_identity_state.json) as
+// a signed block to configured peers over UDP (EVOLIA_PEERS, comma-separated
+// host[:port], default port 5555) plus whatever evolia-net discovered, carrying
+// the cognitive params so the formula co-evolves across the mesh. It also
+// relays any externally-dropped vault block once. A UDP listener on :5555
+// receives peer blocks, verifies their HMAC signature (shared EVOLIA_MESH_KEY),
+// and stores them — feeding the adaptive defense when input is hostile. Events
+// are written to evolia_mesh_sync.log. Standard library only.
 package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -15,6 +20,8 @@ import (
 	"sync"
 	"time"
 
+	"evolia/bridge"
+	"evolia/defense"
 	"evolia/mesh"
 	"evolia/paths"
 )
@@ -31,20 +38,30 @@ func main() {
 		os.Exit(1)
 	}
 
+	self := paths.DeviceID()
+	key := []byte(os.Getenv("EVOLIA_MESH_KEY"))
+	def := defense.New(64)
+
 	logf := newLogger(paths.MeshSyncLog())
-	logf(fmt.Sprintf("start vault=%s cycle=%s listen=%s", vault, cycle, blockAddr))
+	logf(fmt.Sprintf("start device=%s vault=%s cycle=%s listen=%s signed=%t",
+		self, vault, cycle, blockAddr, len(key) > 0))
 
 	seen := map[string]bool{}
 	var mu sync.Mutex
 
 	// Receive blocks propagated by peers and store them in the vault.
-	go listenBlocks(vault, seen, &mu, logf)
+	go listenBlocks(vault, seen, &mu, key, def, logf)
 
 	for {
-		// Peers come from EVOLIA_PEERS plus whatever evolia-net has discovered;
-		// reloaded each cycle so newly found peers are picked up.
+		// Peers come from EVOLIA_PEERS plus whatever evolia-net has discovered.
 		peers := dedupe(append(parsePeers(os.Getenv("EVOLIA_PEERS")), mesh.LoadPeers()...))
+		params := loadParams(paths.CognitiveParams())
 
+		// Emit this node's current value each cycle (signed, params attached).
+		sendBlock(self, readLocalTotalV(), params, peers, key, logf)
+
+		// Relay any externally-dropped vault block once (received UDP blocks are
+		// marked seen, so they are never re-propagated — no amplification).
 		mu.Lock()
 		blocks, err := mesh.NewBlocks(vault, seen)
 		mu.Unlock()
@@ -52,16 +69,17 @@ func main() {
 			logf("scan error: " + err.Error())
 		}
 		for _, b := range blocks {
-			propagate(b, peers, logf)
+			sendBlock(b.Device, b.VValue, params, peers, key, logf)
 		}
 		time.Sleep(cycle)
 	}
 }
 
-// listenBlocks receives propagated blocks over UDP and stores them in the vault.
-// Each stored block is marked seen under the same lock the propagate loop uses,
-// so a received block is never forwarded again (no amplification loops).
-func listenBlocks(vault string, seen map[string]bool, mu *sync.Mutex, logf func(string)) {
+// listenBlocks receives propagated blocks over UDP, verifies + stores them, and
+// hardens the defense when input is hostile. Each stored block is marked seen
+// under the same lock the relay uses, so a received block is never forwarded
+// again (no amplification loops).
+func listenBlocks(vault string, seen map[string]bool, mu *sync.Mutex, key []byte, def *defense.AdaptiveDefense, logf func(string)) {
 	addr, err := net.ResolveUDPAddr("udp", blockAddr)
 	if err != nil {
 		logf("block listen resolve error: " + err.Error())
@@ -74,24 +92,91 @@ func listenBlocks(vault string, seen map[string]bool, mu *sync.Mutex, logf func(
 	}
 	defer conn.Close()
 
-	buf := make([]byte, 4096)
+	buf := make([]byte, 8192)
 	for {
 		n, src, err := conn.ReadFromUDP(buf)
 		if err != nil {
 			continue
 		}
 		mu.Lock()
-		name, storeErr := mesh.StoreIncoming(vault, buf[:n])
+		name, params, storeErr := mesh.StoreIncoming(vault, buf[:n], key)
 		if storeErr == nil {
 			seen[name] = true
 		}
 		mu.Unlock()
-		if storeErr != nil {
-			logf("recv from " + src.IP.String() + " rejected: " + storeErr.Error())
-		} else {
+
+		switch {
+		case storeErr == nil:
+			bridge.FuseIncoming(params)
 			logf("received " + name + " from " + src.IP.String())
+		case errors.Is(storeErr, mesh.ErrInjection):
+			logf(fmt.Sprintf("injection from %s rejected (defense=%.2f)", src.IP.String(), def.Record(defense.SQLInjection)))
+		case errors.Is(storeErr, mesh.ErrBadSignature):
+			logf(fmt.Sprintf("bad signature from %s rejected (defense=%.2f)", src.IP.String(), def.Record(defense.BadSignature)))
+		default:
+			logf(fmt.Sprintf("malformed from %s rejected (defense=%.2f)", src.IP.String(), def.Record(defense.Malformed)))
 		}
 	}
+}
+
+func sendBlock(device string, vValue float64, params map[string]float64, peers []string, key []byte, logf func(string)) {
+	if len(peers) == 0 {
+		logf(fmt.Sprintf("local block device=%s v=%.4f (no peers)", device, vValue))
+		return
+	}
+	payload := map[string]any{"device_id": device, "v_value": vValue}
+	if len(key) > 0 {
+		payload["sig"] = mesh.SignBlock(key, device, vValue)
+	}
+	if len(params) > 0 {
+		payload["cognitive_params"] = params
+	}
+	data, _ := json.Marshal(payload)
+
+	for _, peer := range peers {
+		addr := peer
+		if !strings.Contains(addr, ":") {
+			addr += ":5555"
+		}
+		conn, err := net.DialTimeout("udp", addr, time.Second)
+		if err != nil {
+			logf("dial " + addr + " failed: " + err.Error())
+			continue
+		}
+		_ = conn.SetWriteDeadline(time.Now().Add(time.Second))
+		if _, err := conn.Write(data); err != nil {
+			logf("send " + addr + " failed: " + err.Error())
+		} else {
+			logf(fmt.Sprintf("sent device=%s -> %s", device, addr))
+		}
+		conn.Close()
+	}
+}
+
+func readLocalTotalV() float64 {
+	data, err := os.ReadFile(paths.IdentityState())
+	if err != nil {
+		return 0
+	}
+	var s struct {
+		TotalV float64 `json:"total_v"`
+	}
+	if json.Unmarshal(data, &s) != nil {
+		return 0
+	}
+	return s.TotalV
+}
+
+func loadParams(path string) map[string]float64 {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	var m map[string]float64
+	if json.Unmarshal(data, &m) != nil {
+		return nil
+	}
+	return m
 }
 
 func parsePeers(s string) []string {
@@ -114,32 +199,6 @@ func dedupe(in []string) []string {
 		}
 	}
 	return out
-}
-
-func propagate(b mesh.Block, peers []string, logf func(string)) {
-	if len(peers) == 0 {
-		logf(fmt.Sprintf("local block %s (device=%s v=%.4f)", b.Name, b.Device, b.VValue))
-		return
-	}
-	payload, _ := json.Marshal(b)
-	for _, peer := range peers {
-		addr := peer
-		if !strings.Contains(addr, ":") {
-			addr += ":5555"
-		}
-		conn, err := net.DialTimeout("udp", addr, time.Second)
-		if err != nil {
-			logf("dial " + addr + " failed: " + err.Error())
-			continue
-		}
-		_ = conn.SetWriteDeadline(time.Now().Add(time.Second))
-		if _, err := conn.Write(payload); err != nil {
-			logf("send " + addr + " failed: " + err.Error())
-		} else {
-			logf("sent " + b.Name + " -> " + addr)
-		}
-		conn.Close()
-	}
 }
 
 func newLogger(path string) func(string) {

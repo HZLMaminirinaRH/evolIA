@@ -24,6 +24,9 @@ func Home() string {
 // MeshVault is the directory of mesh blocks.
 func MeshVault() string { return filepath.Join(Home(), "evolia_mesh_vault") }
 
+// IdentityState holds this node's headline value (total_v) — the block it emits.
+func IdentityState() string { return filepath.Join(Home(), "evolia_identity_state.json") }
+
 // PeersFile is where evolia-net records discovered peers and mesh-sync reads them.
 func PeersFile() string { return filepath.Join(Home(), "evolia_peers.json") }
 

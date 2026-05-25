@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"evolia/defense"
 	"evolia/mesh"
 	"evolia/paths"
 )
@@ -34,7 +35,17 @@ type Block struct {
 	SourceDevice    string             `json:"source_device"`
 	VValue          float64            `json:"v_value"`
 	CognitiveParams map[string]float64 `json:"cognitive_params"`
+	Sig             string             `json:"sig,omitempty"`
 	Timestamp       string             `json:"timestamp"`
+}
+
+// FuseIncoming blends incoming cognitive params into the local set and saves.
+// Exported so mesh-sync can fuse params carried over UDP, not just the bridge.
+func FuseIncoming(incoming map[string]float64) {
+	if len(incoming) == 0 {
+		return
+	}
+	saveParams(FuseParams(loadLocalParams(), incoming))
 }
 
 // FuseParams blends local and incoming params (0.7 local + 0.3 incoming) and
@@ -110,12 +121,25 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 	_ = json.NewEncoder(w).Encode(body)
 }
 
-// NewServer builds the HTTP handler for the bridge.
-func NewServer(deviceID, vault string) *http.ServeMux {
+// NewServer builds the HTTP handler for the bridge. With a non-nil key, posted
+// blocks must carry a valid HMAC signature; the def buffer hardens the bridge as
+// it absorbs injection/forged/malformed input.
+func NewServer(deviceID, vault string, key []byte, def *defense.AdaptiveDefense) *http.ServeMux {
+	if def == nil {
+		def = defense.New(64)
+	}
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "device": deviceID})
+		writeJSON(w, http.StatusOK, map[string]any{
+			"status": "ok", "device": deviceID, "defense": def.Level(),
+		})
+	})
+
+	mux.HandleFunc("/defense", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"defense_level": def.Level(), "buffered": def.Len(),
+		})
 	})
 
 	mux.HandleFunc("/mesh/total_v", func(w http.ResponseWriter, r *http.Request) {
@@ -129,7 +153,18 @@ func NewServer(deviceID, vault string) *http.ServeMux {
 		}
 		var b Block
 		if err := json.NewDecoder(r.Body).Decode(&b); err != nil || b.SourceDevice == "" {
+			def.Record(defense.Malformed)
 			writeJSON(w, http.StatusBadRequest, map[string]any{"status": "error", "reason": "invalid block"})
+			return
+		}
+		if defense.LooksLikeInjection(b.SourceDevice) {
+			lvl := def.Record(defense.SQLInjection)
+			writeJSON(w, http.StatusBadRequest, map[string]any{"status": "rejected", "reason": "injection", "defense": lvl})
+			return
+		}
+		if len(key) > 0 && !mesh.VerifyBlock(key, b.SourceDevice, b.VValue, b.Sig) {
+			lvl := def.Record(defense.BadSignature)
+			writeJSON(w, http.StatusUnauthorized, map[string]any{"status": "rejected", "reason": "bad signature", "defense": lvl})
 			return
 		}
 		name, err := StoreBlock(vault, b.SourceDevice, b.VValue)
@@ -153,7 +188,13 @@ func NewServer(deviceID, vault string) *http.ServeMux {
 			TotalV   float64 `json:"total_v"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&s); err != nil || s.DeviceID == "" {
+			def.Record(defense.Malformed)
 			writeJSON(w, http.StatusBadRequest, map[string]any{"status": "error", "reason": "invalid sync"})
+			return
+		}
+		if defense.LooksLikeInjection(s.DeviceID) {
+			lvl := def.Record(defense.SQLInjection)
+			writeJSON(w, http.StatusBadRequest, map[string]any{"status": "rejected", "reason": "injection", "defense": lvl})
 			return
 		}
 		name, err := StoreBlock(vault, s.DeviceID, s.TotalV)

@@ -29,12 +29,16 @@ rust/                    Cargo workspace — the security spine
   evolia-stop/           binary: owner auth gate -> SIGTERM/SIGKILL services -> clear state
 go/                      Go module `evolia` — networking
   paths/                 shared EVOLIA_HOME layout (Go mirror of evolia-core)
-  mesh/                  mesh-block detection + propagation + receive (StoreIncoming) + LoadPeers + TotalV
+  defense/               adaptive defense (Go mirror of evolia-security::evolutive): bounded
+                         attack buffer + injection detector (reactive only)
+  mesh/                  block detection + propagation + receive (StoreIncoming) + HMAC
+                         sign/verify (SignBlock/VerifyBlock) + LoadPeers + TotalV
   netdisc/               peer-discovery registry + announce parsing (testable)
-  bridge/                peer block-exchange HTTP handlers + param fusion (testable)
-  cmd/mesh-sync/         binary: watch the vault + propagate new blocks over UDP; receive peer blocks on :5555
+  bridge/                peer block-exchange HTTP handlers + param fusion + defense-gated intake
+  cmd/mesh-sync/         binary: emit local value (signed) + relay over UDP; receive/verify peer
+                         blocks on :5555, feeding the adaptive defense
   cmd/evolia-net/        binary: LAN peer discovery -> evolia_peers.json
-  cmd/evolia-bridge/     binary: HTTP API (/block, /sync, /mesh/total_v, /health)
+  cmd/evolia-bridge/     binary: HTTP API (/block, /sync, /mesh/total_v, /health, /defense)
 python/                  services that produce/consume the shared state
   evolia_paths.py        shared EVOLIA_HOME layout (Python mirror of evolia-core)
   evolia_sensors.py      sensor readers (termux-api), graceful fallback off-device
@@ -91,10 +95,16 @@ Python `evolia_paths`, Go `mesh.Home`), so the services communicate through file
 - `ganache_db.py` reads `evolia_identity_state.json` and appends to `evolia_blockchain_sync.log`.
 - `evolia_bitcoin.py` converts value to satoshis into `evolia_bitcoin_wallet.json` /
   `evolia_btc_conversion_history.json`.
-- Go `mesh-sync` watches `evolia_mesh_vault/` and propagates new blocks over UDP to peers, and
-  also listens on `:5555` to receive peer blocks into the vault (`mesh.StoreIncoming`, keyed by
-  device id, marked seen so they are never re-propagated); `dashboard.py` reads all of the above
-  and prints the unified snapshot.
+- Go `mesh-sync` emits this node's value (read from `evolia_identity_state.json`) to peers over
+  UDP each cycle and relays vault blocks, then listens on `:5555` to receive peer blocks into the
+  vault (`mesh.StoreIncoming`, keyed by device id, marked seen so they are never re-propagated);
+  `dashboard.py` reads all of the above and prints the unified snapshot.
+- Block authentication uses a shared fleet key `EVOLIA_MESH_KEY` (HMAC-SHA256 over `device|v`):
+  with it set, propagated/posted blocks are signed and verified, and forged/injection/malformed
+  input is rejected and **feeds the adaptive defense** (`go/defense`, mirroring
+  `evolia-security::evolutive`) so the more attacks evolIA absorbs, the harder it defends. Without
+  the key, blocks degrade to unsigned (single-device still works). Strictly reactive — never
+  retaliates.
 
 The value economy is tunable in `evolia_evolve.py`: `ACTION_RATES` (video > photo > sms >
 screen) and `COEFF` (BLE > WiFi).

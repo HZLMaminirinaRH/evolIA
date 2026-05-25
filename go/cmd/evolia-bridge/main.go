@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"evolia/bridge"
+	"evolia/defense"
 	"evolia/paths"
 )
 
@@ -29,10 +30,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	key := []byte(os.Getenv("EVOLIA_MESH_KEY"))
 	logf := newLogger(paths.BridgeLog())
-	logf(fmt.Sprintf("start device=%s addr=%s vault=%s", device, addr, vault))
+	logf(fmt.Sprintf("start device=%s addr=%s vault=%s signed=%t", device, addr, vault, len(key) > 0))
 
-	mux := bridge.NewServer(device, vault)
+	mux := bridge.NewServer(device, vault, key, defense.New(64))
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		logf("server error: " + err.Error())
 		os.Exit(1)

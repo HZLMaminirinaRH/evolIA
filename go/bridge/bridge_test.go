@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"evolia/defense"
+	"evolia/mesh"
 	"evolia/paths"
 )
 
@@ -38,7 +40,7 @@ func TestFuseParamsMissingIncomingKeepsLocal(t *testing.T) {
 }
 
 func TestHealthEndpoint(t *testing.T) {
-	srv := NewServer("dev-1", t.TempDir())
+	srv := NewServer("dev-1", t.TempDir(), nil, nil)
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, req)
@@ -56,7 +58,7 @@ func TestHealthEndpoint(t *testing.T) {
 func TestBlockStoredAndCounted(t *testing.T) {
 	t.Setenv("EVOLIA_HOME", t.TempDir())
 	vault := paths.MeshVault()
-	srv := NewServer("dev-1", vault)
+	srv := NewServer("dev-1", vault, nil, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/block",
 		strings.NewReader(`{"source_device":"peerX","v_value":4.5,"cognitive_params":{"ALPHA":0.5}}`))
@@ -76,8 +78,39 @@ func TestBlockStoredAndCounted(t *testing.T) {
 	}
 }
 
+func TestBridgeDefenseHardensOnHostileInput(t *testing.T) {
+	t.Setenv("EVOLIA_HOME", t.TempDir())
+	key := []byte("fleet-secret")
+	def := defense.New(64)
+	srv := NewServer("dev-1", paths.MeshVault(), key, def)
+
+	post := func(body string) int {
+		rec := httptest.NewRecorder()
+		srv.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/block", strings.NewReader(body)))
+		return rec.Code
+	}
+
+	// Injection-like source device is rejected and raises the defense.
+	if code := post(`{"source_device":"x'; DROP TABLE peers;--","v_value":1}`); code != http.StatusBadRequest {
+		t.Fatalf("injection: want 400, got %d", code)
+	}
+	// A forged/missing signature is rejected (a key is configured).
+	if code := post(`{"source_device":"peerX","v_value":4.5}`); code != http.StatusUnauthorized {
+		t.Fatalf("bad sig: want 401, got %d", code)
+	}
+	if def.Level() <= 0 {
+		t.Fatalf("defense must have risen after hostile input, got %v", def.Level())
+	}
+
+	// A correctly signed block is accepted.
+	good := `{"source_device":"peerX","v_value":4.5,"sig":"` + mesh.SignBlock(key, "peerX", 4.5) + `"}`
+	if code := post(good); code != http.StatusOK {
+		t.Fatalf("signed block: want 200, got %d", code)
+	}
+}
+
 func TestBlockRejectsBadInput(t *testing.T) {
-	srv := NewServer("dev-1", t.TempDir())
+	srv := NewServer("dev-1", t.TempDir(), nil, nil)
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/block", strings.NewReader(`{}`)))
 	if rec.Code != http.StatusBadRequest {
