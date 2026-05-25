@@ -17,6 +17,9 @@ class EvoliaPaths(val home: File) {
     val deployment: File get() = File(home, "evolia_deployment.json")
     val authConfig: File get() = File(home, ".evolia_auth.json")
     val sessionState: File get() = File(home, ".evolia_session.json")
+    val meshVault: File get() = File(home, "evolia_mesh_vault")
+    val bitcoinWallet: File get() = File(home, "evolia_bitcoin_wallet.json")
+    val conversionHistory: File get() = File(home, "evolia_btc_conversion_history.json")
 
     companion object {
         const val CONVERSION_RATE_V_TO_SAT = 100_000

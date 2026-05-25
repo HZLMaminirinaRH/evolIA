@@ -80,6 +80,12 @@ gate) that CI cannot, follow the step-by-step [device validation guide](VALIDATI
   `EvoliaService` passes `EVOLIA_SESSION_TOKEN` / `EVOLIA_DEVICE_ID` to the Go
   children — the same env contract as `evolia-start`. (Argon2 verification runs
   on the UI thread; fine for a deliberate one-shot auth.)
+- **Phase 4 — observability, mesh, BTC.** *Done (4a, dashboard):* `Dashboard`
+  (`core/`) ports `dashboard.py` — a pure aggregation of the identity state, the
+  Go mesh vault, the blockchain sync log and the bitcoin wallet/history into one
+  snapshot (cognitive power = personal + mesh + ganache), unit-tested; the home
+  screen renders it live (5 s auto-refresh). *Planned:* real Go mesh
+  propagation/discovery (4b), then the BTC conversion port (4c).
 
 The Kotlin core mirrors `evolia_evolve.py` line-for-line; reference outputs
 (at-rest `V=0`, full-activity `V≈0.6109`, BLE > WiFi) match the Python core.

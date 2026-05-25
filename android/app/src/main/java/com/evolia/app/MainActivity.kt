@@ -4,6 +4,8 @@ import android.Manifest
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.text.InputType
 import android.widget.Button
@@ -18,6 +20,7 @@ import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import com.evolia.app.core.ActionQueue
+import com.evolia.app.core.Dashboard
 import com.evolia.app.core.EvoliaPaths
 import com.evolia.app.security.AuthStore
 import com.evolia.app.security.Security
@@ -35,6 +38,15 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var status: TextView
     private var pendingStart = false
+
+    // Live dashboard refresh while the activity is in the foreground.
+    private val refreshHandler = Handler(Looper.getMainLooper())
+    private val refreshTick = object : Runnable {
+        override fun run() {
+            status.text = readStatus()
+            refreshHandler.postDelayed(this, REFRESH_MS)
+        }
+    }
 
     // Permissions are requested only after auth succeeds; then start the service.
     private val startWithPermissions = registerForActivityResult(
@@ -86,6 +98,16 @@ class MainActivity : AppCompatActivity() {
             },
         )
         status.text = readStatus()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        refreshHandler.post(refreshTick)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        refreshHandler.removeCallbacks(refreshTick)
     }
 
     // --- auth gate -----------------------------------------------------------
@@ -249,17 +271,20 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun readStatus(): String {
-        val home = File(filesDir, "evolia")
-        val state = File(home, "evolia_identity_state.json")
-        val wallet = File(home, "evolia_wallet_address.txt")
+        val paths = EvoliaPaths(File(filesDir, "evolia"))
         val sb = StringBuilder()
-        if (wallet.exists()) sb.append("Wallet (à financer en gas):\n").append(wallet.readText()).append("\n\n")
-        sb.append(if (state.exists()) "État partagé:\n" + state.readText() else "Pas encore d'état.")
+        if (paths.walletAddress.exists()) {
+            sb.append("Wallet ETH (à financer en gas):\n")
+                .append(paths.walletAddress.readText())
+                .append("\n\n")
+        }
+        sb.append(Dashboard.render(Dashboard.collect(paths)))
         return sb.toString()
     }
 
     private companion object {
         const val MAX_ATTEMPTS = 3
         const val SESSION_SECS = 8L * 3600
+        const val REFRESH_MS = 5000L
     }
 }
