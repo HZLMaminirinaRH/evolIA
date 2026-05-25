@@ -97,7 +97,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun readStatus(): String {
-        val file = File(File(filesDir, "evolia"), "evolia_identity_state.json")
-        return if (file.exists()) "État partagé:\n" + file.readText() else "Pas encore d'état."
+        val home = File(filesDir, "evolia")
+        val state = File(home, "evolia_identity_state.json")
+        val wallet = File(home, "evolia_wallet_address.txt")
+        val sb = StringBuilder()
+        if (wallet.exists()) sb.append("Wallet (à financer en gas):\n").append(wallet.readText()).append("\n\n")
+        sb.append(if (state.exists()) "État partagé:\n" + state.readText() else "Pas encore d'état.")
+        return sb.toString()
     }
 }

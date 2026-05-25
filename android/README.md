@@ -53,10 +53,12 @@ shared state.
   sync to `evolia_blockchain_sync.log` (status `local`) every 30s in the service
   loop; `MediaActionCapture` observes MediaStore and enqueues `photo_taken` /
   `video_taken` as new photos/videos appear (the MediaWatcher analog; SMS is
-  deferred since READ_SMS is a Play-restricted permission). *Remaining:* real
-  on-chain anchoring with **web3j** (status `success` via
-  `EvoliaCore.anchorValue`), which needs an RPC URL, the deployed contract
-  address and a signing key held in the Android Keystore.
+  deferred since READ_SMS is a Play-restricted permission); **web3j** signing
+  identity (`EvoliaWallet`) generated on first run and stored encrypted via the
+  Android Keystore (`KeystoreCrypto`), its address surfaced in the UI for gas
+  funding. *Remaining:* the on-chain path itself — connect to the RPC, deploy
+  `EvoliaCore` on first launch and call `anchorValue` (status `success`),
+  falling back to LOCAL when no node is reachable.
 - **Phase 3 — auth/security.** Replace the Rust TTY auth with a Kotlin screen
   (PIN + `BiometricPrompt`); reuse `evolia-security`'s crypto via JNI, or
   reimplement ChaCha20-Poly1305 / HMAC with Android's crypto APIs.

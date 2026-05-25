@@ -14,6 +14,7 @@ import com.evolia.app.core.ActionQueue
 import com.evolia.app.core.EvoliaAnchor
 import com.evolia.app.core.EvoliaPaths
 import com.evolia.app.core.EvoliaValue
+import com.evolia.app.chain.EvoliaWallet
 import com.evolia.app.sensors.AndroidSensors
 import com.evolia.app.sensors.MediaActionCapture
 import kotlinx.coroutines.CoroutineScope
@@ -79,6 +80,8 @@ class EvoliaService : Service() {
         val paths = EvoliaPaths(home)
         val value = EvoliaValue(paths)
         value.load()
+        // Generate/load the signing identity once and surface its address.
+        EvoliaWallet(this@EvoliaService, paths)
         val sensors = AndroidSensors(this@EvoliaService).apply { start() }
         val media = MediaActionCapture(this@EvoliaService, paths).apply { start() }
         val startedAt = System.nanoTime()
