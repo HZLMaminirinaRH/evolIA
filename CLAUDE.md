@@ -47,6 +47,10 @@ python/                  services that produce/consume the shared state
   evolia_evolve.py       THE evolutive formula (exponential) — the cognitive core
   evolia_value.py        accumulator: base(actions) x (1+V) + sensor floor; emits a
                          per-cycle cognitive proof-of-work (evolia_work_proof.json)
+  evolia_learning.py     Super-peer learning: aggregate peer blocks, evolve parameters
+                         asymmetrically (not symmetric gossip). Learn action effectiveness,
+                         sensor correlations, user engagement patterns; output evolved params.
+  evolia_supernode.py    binary: run the Super-peer service (learn_and_evolve loop, 30s cadence)
   evolia_actions.py      action capture (SMS/photo/video + CLI) -> action queue
   evolia_run.py          main loop: drain action queue + sample sensors + cycle
   evolia_deploy.py       deploy EvoliaCore from the prebuilt artifact (web3)
@@ -134,9 +138,21 @@ Python `evolia_paths`, Go `mesh.Home`), so the services communicate through file
   on re-send — the UDP receiver (`mesh.StoreIncoming`) and the HTTP bridge (`bridge.StoreBlock`,
   via the shared `mesh.StorePeerBlock`) — so `TotalV` counts each peer once and never inflates
   from repeated posts.
+- The **Super-peer role** is a central coordinating node (asymmetric, not hierarchical) that:
+  - **Reads** peer blocks from the mesh vault (carrying their cognitive work proofs)
+  - **Learns** patterns: which actions/sensor mixes achieve high `v_normalized`, user engagement,
+    attack frequency per peer
+  - **Evolves** the formula: adjusts `ACTION_RATES` and parameter weights based on global patterns
+  - **Propagates** learned parameters back via `evolia_cognitive_params.json` (picked up by
+    mesh-sync and relayed to all peers)
+  
+  Unlike symmetric peer gossip, the Super-peer sees patterns across the entire mesh and uses them
+  to strengthen all peers. One node can run as the Super-peer (e.g., `evolia_supernode.py continuous`),
+  or multiple nodes can learn independently (latest/strongest wins via fusion). Valorizes heavy
+  mobile users by boosting engagement parameters for peers with high activity.
 
 The value economy is tunable in `evolia_evolve.py`: `ACTION_RATES` (video > photo > sms >
-screen) and `COEFF` (BLE > WiFi).
+screen) and `COEFF` (BLE > WiFi). The Super-peer learns optimal tuning from peer behavior.
 
 `evolia-start` authenticates the owner, derives the security key **in-process** from the
 just-verified password (the "liaison directe" between auth and security), mints a session
@@ -185,6 +201,8 @@ LOCAL mode when those are absent. Run from the `python/` directory:
   `test_actions.py`, `test_web3.py`). `test_web3.py` skips unless web3+eth-tester
   are installed.
 - Demo a module: `EVOLIA_HOME=/tmp/x python3 evolia_value.py` (also `dashboard.py`, etc.)
+- Super-peer service: `python3 evolia_supernode.py continuous [interval]` (default 30s cadence;
+  reads mesh vault, aggregates peer work proofs, learns and evolves parameters)
 - Deps: `pip install -r requirements.txt` (none for the value model);
   `pip install -r requirements-web3.txt` for real on-chain anchoring.
 

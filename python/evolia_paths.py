@@ -89,5 +89,10 @@ def deployment() -> Path:
     return evolia_home() / "evolia_deployment.json"
 
 
+def cognitive_params() -> Path:
+    """Learned cognitive parameters from the Super-peer, fused by bridge/mesh-sync."""
+    return evolia_home() / "evolia_cognitive_params.json"
+
+
 def contract_abi() -> Path:
     return evolia_home() / "EvoliaCore.abi"
