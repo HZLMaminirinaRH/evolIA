@@ -82,6 +82,7 @@ fn default_services() -> Vec<ServiceSpec> {
     vec![
         py("actions", "evolia_actions.py", &[]),
         py("evolia_run", "evolia_run.py", &[]),
+        py("supernode", "evolia_supernode.py", &["continuous", "30"]),
         py("ganache_db", "ganache_db.py", &["continuous", "30"]),
         py("dashboard", "dashboard.py", &[]),
     ]

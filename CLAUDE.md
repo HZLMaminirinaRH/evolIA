@@ -158,10 +158,12 @@ screen) and `COEFF` (BLE > WiFi). The Super-peer learns optimal tuning from peer
 just-verified password (the "liaison directe" between auth and security), mints a session
 token, and launches the configured services — passing `EVOLIA_SESSION_TOKEN` and
 `EVOLIA_DEVICE_ID` to each child via the environment. The launched service list defaults to
-`evolia_run.py`, `ganache_db.py continuous 30`, and `dashboard.py`; each is skipped if its
+`evolia_actions.py`, `evolia_run.py`, `evolia_supernode.py continuous 30` (the Super-peer
+learning loop), `ganache_db.py continuous 30`, and `dashboard.py`; each is skipped if its
 script is absent, and the list can be overridden by `$EVOLIA_HOME/services.toml`
 (`[[service]]` tables: `name`, `command`, `args`, `requires_file`) — e.g. to add the built
-Go `mesh-sync` binary.
+Go `mesh-sync` binary. `scripts/install-termux.sh` writes that `services.toml` with the full
+mesh (Go binaries + Python services, including `supernode`).
 
 ## Build / test / run (Rust)
 
