@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -37,9 +38,10 @@ func main() {
 
 	def := defense.New(64)
 	// Relax the adaptive defense one notch per quiet tick so it breathes back
-	// down once an attack burst stops, instead of only ever climbing.
+	// down once an attack burst stops, instead of only ever climbing. The tempo
+	// matches mesh-sync (EVOLIA_MESH_CYCLE_SECONDS, default 5s).
 	go func() {
-		for range time.Tick(2 * time.Second) {
+		for range time.Tick(decayInterval()) {
 			def.Decay()
 		}
 	}()
@@ -49,6 +51,17 @@ func main() {
 		logf("server error: " + err.Error())
 		os.Exit(1)
 	}
+}
+
+// decayInterval is the defense relaxation tempo, shared with mesh-sync via
+// EVOLIA_MESH_CYCLE_SECONDS (default 5s).
+func decayInterval() time.Duration {
+	if s := os.Getenv("EVOLIA_MESH_CYCLE_SECONDS"); s != "" {
+		if v, err := strconv.Atoi(s); err == nil && v > 0 {
+			return time.Duration(v) * time.Second
+		}
+	}
+	return 5 * time.Second
 }
 
 func newLogger(path string) func(string) {

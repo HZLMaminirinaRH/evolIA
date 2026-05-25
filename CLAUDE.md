@@ -148,7 +148,9 @@ Run from the `go/` directory:
 - Build: `go build ./...`
 - Vet: `go vet ./...`
 - Test: `go test ./...`
-- Run: `go run ./cmd/mesh-sync` (honors `EVOLIA_HOME` and `EVOLIA_PEERS`)
+- Run: `go run ./cmd/mesh-sync` (honors `EVOLIA_HOME`, `EVOLIA_PEERS`, and
+  `EVOLIA_MESH_CYCLE_SECONDS` — the emit/decay cadence, default 5s; shared with
+  the bridge's defense-decay ticker)
 
 ## Build / test / run (Python)
 

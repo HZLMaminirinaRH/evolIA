@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -27,10 +28,19 @@ import (
 	"evolia/paths"
 )
 
-const (
-	cycle     = 2 * time.Second
-	blockAddr = ":5555"
-)
+const blockAddr = ":5555"
+
+// cycleInterval is the emit/relax cadence. EVOLIA_MESH_CYCLE_SECONDS overrides
+// the default of 5s — battery-friendly and aligned with the Python loop's
+// EVOLIA_CYCLE_SECONDS, rather than waking the CPU every 2s.
+func cycleInterval() time.Duration {
+	if s := os.Getenv("EVOLIA_MESH_CYCLE_SECONDS"); s != "" {
+		if v, err := strconv.Atoi(s); err == nil && v > 0 {
+			return time.Duration(v) * time.Second
+		}
+	}
+	return 5 * time.Second
+}
 
 func main() {
 	vault := paths.MeshVault()
@@ -42,6 +52,7 @@ func main() {
 	self := paths.DeviceID()
 	key := []byte(os.Getenv("EVOLIA_MESH_KEY"))
 	def := defense.New(64)
+	cycle := cycleInterval()
 
 	logf := newLogger(paths.MeshSyncLog())
 	logf(fmt.Sprintf("start device=%s vault=%s cycle=%s listen=%s signed=%t",
