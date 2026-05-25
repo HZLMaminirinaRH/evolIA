@@ -4,9 +4,10 @@ A native Android app whose **foreground service** supervises the prebuilt evolIA
 binaries. A foreground service with an ongoing notification is the only thing
 Android guarantees not to kill — this is the real fix for the Termux `signal 9`.
 
-> Status: **scaffold**. It has not been compiled in this repo's CI (no Android
-> SDK there). Open it in Android Studio (or build with the Gradle wrapper once
-> generated) on a machine with the Android SDK + NDK.
+> Status: CI compiles the app and runs the value-core unit tests on every push
+> (the `Android (Plan B app)` job: `:app:assembleDebug` + `:app:testDebugUnitTest`).
+> On-device behaviour (sensors, capture, on-chain anchoring) still needs a real
+> device/emulator — open it in Android Studio on a machine with the SDK + NDK.
 
 ## What it does today
 
@@ -45,20 +46,23 @@ shared state.
 
 ## Roadmap
 
-- **Phase 2b — finish the value layer.** *Done:* runtime permissions
-  (location / BLUETOOTH_SCAN / POST_NOTIFICATIONS) requested before start;
-  `AndroidSensors` feeds the formula real WiFi scan counts, a continuous BLE
-  device count and the last-known location fix (all permission-guarded, degrade
-  to 0/false); `EvoliaAnchor` ports `ganache_db.py` LOCAL mode, appending each
-  sync to `evolia_blockchain_sync.log` (status `local`) every 30s in the service
-  loop; `MediaActionCapture` observes MediaStore and enqueues `photo_taken` /
-  `video_taken` as new photos/videos appear (the MediaWatcher analog; SMS is
-  deferred since READ_SMS is a Play-restricted permission); **web3j** signing
-  identity (`EvoliaWallet`) generated on first run and stored encrypted via the
-  Android Keystore (`KeystoreCrypto`), its address surfaced in the UI for gas
-  funding. *Remaining:* the on-chain path itself — connect to the RPC, deploy
-  `EvoliaCore` on first launch and call `anchorValue` (status `success`),
-  falling back to LOCAL when no node is reachable.
+- **Phase 2b — finish the value layer. _Done._** Runtime permissions
+  (location / BLUETOOTH_SCAN / POST_NOTIFICATIONS / media) requested before
+  start; `AndroidSensors` feeds the formula real WiFi scan counts, a continuous
+  BLE device count and the last-known location fix (all permission-guarded,
+  degrade to 0/false); `MediaActionCapture` observes MediaStore and enqueues
+  `photo_taken` / `video_taken` as new photos/videos appear (the MediaWatcher
+  analog; SMS is deferred since READ_SMS is a Play-restricted permission);
+  on-chain anchoring is a web3j port of `ganache_db.py` — `EvoliaWallet`
+  generates the signing key on first run and stores it encrypted via the Android
+  Keystore (`KeystoreCrypto`, surfacing the address for gas funding), and
+  `ChainAnchor` deploys `EvoliaCore` from the bundled bytecode
+  (`assets/EvoliaCore.json`) on first launch, then calls `anchorValue` each sync
+  (value x100, status `success` with tx hash/block). It reads
+  `evolia_chain_config.json` (`rpc_url`, `chain_id`) and caches the address in
+  `evolia_deployment.json` — the same file the Python side uses. With no RPC
+  configured or no node reachable it degrades to a logged LOCAL entry, exactly
+  like Python.
 - **Phase 3 — auth/security.** Replace the Rust TTY auth with a Kotlin screen
   (PIN + `BiometricPrompt`); reuse `evolia-security`'s crypto via JNI, or
   reimplement ChaCha20-Poly1305 / HMAC with Android's crypto APIs.
