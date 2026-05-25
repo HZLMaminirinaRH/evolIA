@@ -14,6 +14,7 @@ Default home is `$HOME/evolia` (matching the Termux layout and the Rust spine);
 from __future__ import annotations
 
 import os
+import tempfile
 from pathlib import Path
 
 # 1 unit of cognitive value (BTC-e) converts to this many satoshis.
@@ -29,6 +30,26 @@ def ensure_home() -> Path:
     home = evolia_home()
     home.mkdir(parents=True, exist_ok=True)
     return home
+
+
+def atomic_write_text(path: Path, text: str) -> None:
+    """Write text durably: a temp file in the same dir, flushed + fsync'd, then
+    atomically renamed into place. A crash or kill (signal 9) can never leave a
+    half-written state file — readers see either the old or the new content."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".tmp-", suffix=path.suffix)
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 # --- shared state files ------------------------------------------------------

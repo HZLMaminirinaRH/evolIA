@@ -83,7 +83,7 @@ func loadLocalParams() map[string]float64 {
 
 func saveParams(m map[string]float64) {
 	if data, err := json.MarshalIndent(m, "", "  "); err == nil {
-		_ = os.WriteFile(paths.CognitiveParams(), data, 0o600)
+		_ = paths.WriteFileAtomic(paths.CognitiveParams(), data, 0o600)
 	}
 }
 

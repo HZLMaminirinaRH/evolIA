@@ -148,7 +148,7 @@ func StorePeerBlock(vault, device string, vValue float64) (string, error) {
 		"v_value":   vValue,
 		"timestamp": time.Now().UTC().Format(time.RFC3339),
 	})
-	if err := os.WriteFile(filepath.Join(vault, name), payload, 0o600); err != nil {
+	if err := paths.WriteFileAtomic(filepath.Join(vault, name), payload, 0o600); err != nil {
 		return "", err
 	}
 	return name, nil

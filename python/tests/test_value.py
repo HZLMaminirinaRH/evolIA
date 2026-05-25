@@ -8,6 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import evolia_paths as paths  # noqa: E402
 from evolia_sensors import SensorSample  # noqa: E402
 from evolia_evolve import ACTION_RATES, COEFF, evolve  # noqa: E402
 from evolia_value import EvoliaValue  # noqa: E402
@@ -114,6 +115,25 @@ def test_persist_and_reload():
     assert again.cycle_count == 1
     assert again.location_count == 1
     assert abs(again.total_v - v.total_v) < 1e-9
+
+
+def test_atomic_write_persists_and_leaves_no_temp():
+    d = Path(tempfile.mkdtemp())
+    target = d / "evolia_value_state.json"
+    paths.atomic_write_text(target, "first")
+    paths.atomic_write_text(target, "second")  # overwrite, not append
+    assert target.read_text() == "second"
+    # No half-written temp file may be left behind on success.
+    assert [p.name for p in d.iterdir()] == [target.name]
+
+
+def test_save_is_atomic_no_temp_left():
+    path = _tmp_state()
+    v = EvoliaValue(state_path=path)
+    v.record_action("video_taken")
+    v.cycle(SensorSample(), elapsed_seconds=1.0)
+    leftovers = [p.name for p in path.parent.iterdir() if p.name.startswith(".tmp-")]
+    assert leftovers == [], f"temp files left: {leftovers}"
 
 
 if __name__ == "__main__":

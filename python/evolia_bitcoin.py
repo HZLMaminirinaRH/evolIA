@@ -81,9 +81,8 @@ class BitcoinBridge:
         }
 
     def save(self) -> None:
-        self.wallet_path.parent.mkdir(parents=True, exist_ok=True)
-        self.wallet_path.write_text(json.dumps(self.to_dict(), indent=2))
-        self.history_path.write_text(json.dumps(
+        paths.atomic_write_text(self.wallet_path, json.dumps(self.to_dict(), indent=2))
+        paths.atomic_write_text(self.history_path, json.dumps(
             {"timestamp": _now(), "conversions": self.conversions}, indent=2
         ))
 

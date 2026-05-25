@@ -93,11 +93,12 @@ class EvoliaValue:
         }
 
     def save(self) -> None:
-        self.state_path.parent.mkdir(parents=True, exist_ok=True)
+        # Atomic writes: a signal-9 kill mid-save must never corrupt the state
+        # and lose the accumulated total_v (the headline figure).
         state = self.to_dict()
-        self.state_path.write_text(json.dumps(state, indent=2))
+        paths.atomic_write_text(self.state_path, json.dumps(state, indent=2))
         identity = self.state_path.parent / paths.identity_state().name
-        identity.write_text(json.dumps(
+        paths.atomic_write_text(identity, json.dumps(
             {
                 "total_v": state["total_v"],
                 "cycle_count": self.cycle_count,

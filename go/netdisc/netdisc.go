@@ -8,7 +8,6 @@ package netdisc
 
 import (
 	"encoding/json"
-	"os"
 	"sort"
 	"sync"
 	"time"
@@ -78,5 +77,5 @@ func (r *Registry) Save() error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(paths.PeersFile(), data, 0o600)
+	return paths.WriteFileAtomic(paths.PeersFile(), data, 0o600)
 }
