@@ -63,14 +63,20 @@ shared state.
   `evolia_deployment.json` — the same file the Python side uses. With no RPC
   configured or no node reachable it degrades to a logged LOCAL entry, exactly
   like Python.
-- **Phase 3 — auth/security.** *Done (3a, crypto core):* a Kotlin reimplementation
-  (no JNI) under `security/` — `Argon2Phc` (Argon2id PHC hashing, the
+- **Phase 3 — auth/security. _Done._** A Kotlin reimplementation (no JNI) under
+  `security/`. _Crypto core (3a):_ `Argon2Phc` (Argon2id PHC hashing, the
   evolia-auth port) and `Security` (master key = Argon2id over SHA-256(device_id),
   ChaCha20-Poly1305 AEAD, device-bound session tokens, HMAC-SHA256 signatures —
   the evolia-security port), backed by BouncyCastle and unit-tested on the JVM
   mirroring the Rust suites (roundtrip, wrong-key, expiry, device-binding).
-  *Remaining (3b, UI gate):* persist the `AuthConfig` (`.evolia_auth.json`),
-  first-run setup, and gate the service behind a PIN screen + `BiometricPrompt`.
+  _Owner gate (3b):_ `AuthStore` persists the `AuthConfig` (`.evolia_auth.json`,
+  app-private), and `MainActivity` gates the service behind the three layers —
+  PIN, password, optional `BiometricPrompt` — running first-run setup when no
+  config exists. On success it derives the key from the verified password, mints
+  a device-bound session token (the "liaison directe"), and persists it so
+  `EvoliaService` passes `EVOLIA_SESSION_TOKEN` / `EVOLIA_DEVICE_ID` to the Go
+  children — the same env contract as `evolia-start`. (Argon2 verification runs
+  on the UI thread; fine for a deliberate one-shot auth.)
 
 The Kotlin core mirrors `evolia_evolve.py` line-for-line; reference outputs
 (at-rest `V=0`, full-activity `V≈0.6109`, BLE > WiFi) match the Python core.

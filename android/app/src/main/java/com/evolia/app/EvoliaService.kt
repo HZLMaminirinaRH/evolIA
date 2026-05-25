@@ -16,6 +16,7 @@ import com.evolia.app.core.EvoliaPaths
 import com.evolia.app.core.EvoliaValue
 import com.evolia.app.sensors.AndroidSensors
 import com.evolia.app.sensors.MediaActionCapture
+import org.json.JSONObject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -43,6 +44,10 @@ class EvoliaService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private val processes = mutableListOf<Process>()
 
+    // Owner session passed to the Go children (minted by the auth gate).
+    private var sessionToken: String? = null
+    private var deviceId: String? = null
+
     // Go binaries, packaged as lib*.so so Android extracts them executable.
     private val binaries = listOf(
         "libevolia_net.so",
@@ -63,6 +68,7 @@ class EvoliaService : Service() {
         startForeground(NOTIF_ID, buildNotification("Supervision des services Evolia…"))
 
         val home = File(filesDir, "evolia").apply { mkdirs() }
+        loadSession(home)
 
         // Native value engine (Phase 2): runs in-process, no Python, no signal 9.
         startValueLoop(home)
@@ -104,6 +110,18 @@ class EvoliaService : Service() {
         }
     }
 
+    private fun loadSession(home: File) {
+        val file = File(home, ".evolia_session.json")
+        if (!file.exists()) return
+        try {
+            val j = JSONObject(file.readText())
+            sessionToken = j.optString("token").ifBlank { null }
+            deviceId = j.optString("device_id").ifBlank { null }
+        } catch (_: Exception) {
+            // No usable session — children still run with EVOLIA_HOME only.
+        }
+    }
+
     private fun superviseBinary(binary: File, home: File) = scope.launch {
         while (isActive) {
             try {
@@ -111,6 +129,8 @@ class EvoliaService : Service() {
                     .directory(home)
                     .redirectErrorStream(true)
                 builder.environment()["EVOLIA_HOME"] = home.absolutePath
+                sessionToken?.let { builder.environment()["EVOLIA_SESSION_TOKEN"] = it }
+                deviceId?.let { builder.environment()["EVOLIA_DEVICE_ID"] = it }
                 val process = builder.start()
                 synchronized(processes) { processes.add(process) }
                 process.waitFor()
