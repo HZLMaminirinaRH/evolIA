@@ -8,9 +8,13 @@ package mesh
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
+	"time"
 
 	"evolia/paths"
 )
@@ -63,6 +67,42 @@ func TotalV(vault string) float64 {
 		}
 	}
 	return total
+}
+
+// StoreIncoming parses a block datagram propagated by a peer's mesh-sync and
+// writes it into the local vault, so TotalV and the dashboard pick it up. The
+// file is keyed by device id (recv_<device>.json), so re-sends from the same
+// peer overwrite rather than accumulate. Returns the file name written, which
+// the caller should mark "seen" to avoid re-propagating a received block.
+func StoreIncoming(vault string, data []byte) (string, error) {
+	var b Block
+	if err := json.Unmarshal(data, &b); err != nil {
+		return "", err
+	}
+	if b.Device == "" {
+		return "", errors.New("block missing device_id")
+	}
+	if err := os.MkdirAll(vault, 0o700); err != nil {
+		return "", err
+	}
+	name := fmt.Sprintf("recv_%s.json", sanitizeDevice(b.Device))
+	payload, _ := json.Marshal(map[string]any{
+		"device_id": b.Device,
+		"v_value":   b.VValue,
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+	})
+	if err := os.WriteFile(filepath.Join(vault, name), payload, 0o600); err != nil {
+		return "", err
+	}
+	return name, nil
+}
+
+func sanitizeDevice(s string) string {
+	r := strings.NewReplacer("/", "_", "\\", "_", ".", "_", " ", "_", ":", "_")
+	if out := r.Replace(s); out != "" {
+		return out
+	}
+	return "peer"
 }
 
 func readBlock(path string) (Block, error) {

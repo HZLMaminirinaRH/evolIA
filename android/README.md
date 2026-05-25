@@ -84,8 +84,11 @@ gate) that CI cannot, follow the step-by-step [device validation guide](VALIDATI
   (`core/`) ports `dashboard.py` — a pure aggregation of the identity state, the
   Go mesh vault, the blockchain sync log and the bitcoin wallet/history into one
   snapshot (cognitive power = personal + mesh + ganache), unit-tested; the home
-  screen renders it live (5 s auto-refresh). *Planned:* real Go mesh
-  propagation/discovery (4b), then the BTC conversion port (4c).
+  screen renders it live (5 s auto-refresh). *Done (4b, mesh receive):* the Go
+  `mesh-sync` now listens on UDP `:5555` and stores peer-propagated blocks into
+  the vault (`mesh.StoreIncoming`), closing the propagation loop — blocks were
+  sent but never received before. Received blocks are marked seen so they are
+  never re-propagated (no amplification). *Planned:* the BTC conversion port (4c).
 
 The Kotlin core mirrors `evolia_evolve.py` line-for-line; reference outputs
 (at-rest `V=0`, full-activity `V≈0.6109`, BLE > WiFi) match the Python core.

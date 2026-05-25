@@ -12,13 +12,17 @@ import (
 	"net"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"evolia/mesh"
 	"evolia/paths"
 )
 
-const cycle = 2 * time.Second
+const (
+	cycle     = 2 * time.Second
+	blockAddr = ":5555"
+)
 
 func main() {
 	vault := paths.MeshVault()
@@ -28,15 +32,22 @@ func main() {
 	}
 
 	logf := newLogger(paths.MeshSyncLog())
-	logf(fmt.Sprintf("start vault=%s cycle=%s", vault, cycle))
+	logf(fmt.Sprintf("start vault=%s cycle=%s listen=%s", vault, cycle, blockAddr))
 
 	seen := map[string]bool{}
+	var mu sync.Mutex
+
+	// Receive blocks propagated by peers and store them in the vault.
+	go listenBlocks(vault, seen, &mu, logf)
+
 	for {
 		// Peers come from EVOLIA_PEERS plus whatever evolia-net has discovered;
 		// reloaded each cycle so newly found peers are picked up.
 		peers := dedupe(append(parsePeers(os.Getenv("EVOLIA_PEERS")), mesh.LoadPeers()...))
 
+		mu.Lock()
 		blocks, err := mesh.NewBlocks(vault, seen)
+		mu.Unlock()
 		if err != nil {
 			logf("scan error: " + err.Error())
 		}
@@ -44,6 +55,42 @@ func main() {
 			propagate(b, peers, logf)
 		}
 		time.Sleep(cycle)
+	}
+}
+
+// listenBlocks receives propagated blocks over UDP and stores them in the vault.
+// Each stored block is marked seen under the same lock the propagate loop uses,
+// so a received block is never forwarded again (no amplification loops).
+func listenBlocks(vault string, seen map[string]bool, mu *sync.Mutex, logf func(string)) {
+	addr, err := net.ResolveUDPAddr("udp", blockAddr)
+	if err != nil {
+		logf("block listen resolve error: " + err.Error())
+		return
+	}
+	conn, err := net.ListenUDP("udp", addr)
+	if err != nil {
+		logf("block listen error: " + err.Error())
+		return
+	}
+	defer conn.Close()
+
+	buf := make([]byte, 4096)
+	for {
+		n, src, err := conn.ReadFromUDP(buf)
+		if err != nil {
+			continue
+		}
+		mu.Lock()
+		name, storeErr := mesh.StoreIncoming(vault, buf[:n])
+		if storeErr == nil {
+			seen[name] = true
+		}
+		mu.Unlock()
+		if storeErr != nil {
+			logf("recv from " + src.IP.String() + " rejected: " + storeErr.Error())
+		} else {
+			logf("received " + name + " from " + src.IP.String())
+		}
 	}
 }
 
