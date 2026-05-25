@@ -34,7 +34,16 @@ func main() {
 	logf := newLogger(paths.BridgeLog())
 	logf(fmt.Sprintf("start device=%s addr=%s vault=%s signed=%t", device, addr, vault, len(key) > 0))
 
-	mux := bridge.NewServer(device, vault, key, defense.New(64))
+	def := defense.New(64)
+	// Relax the adaptive defense one notch per quiet tick so it breathes back
+	// down once an attack burst stops, instead of only ever climbing.
+	go func() {
+		for range time.Tick(2 * time.Second) {
+			def.Decay()
+		}
+	}()
+
+	mux := bridge.NewServer(device, vault, key, def)
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		logf("server error: " + err.Error())
 		os.Exit(1)

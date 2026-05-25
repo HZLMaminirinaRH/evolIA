@@ -78,6 +78,35 @@ func TestBlockStoredAndCounted(t *testing.T) {
 	}
 }
 
+func TestBlockRepostOverwritesPerPeer(t *testing.T) {
+	t.Setenv("EVOLIA_HOME", t.TempDir())
+	vault := paths.MeshVault()
+	srv := NewServer("dev-1", vault, nil, nil)
+
+	post := func(v string) {
+		rec := httptest.NewRecorder()
+		srv.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/block",
+			strings.NewReader(`{"source_device":"peerX","v_value":`+v+`}`)))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("POST /block status = %d body=%s", rec.Code, rec.Body.String())
+		}
+	}
+
+	// The same peer posts three times; only the latest value must count — a
+	// re-post overwrites rather than accumulating (no TotalV double-count).
+	post("1.0")
+	post("2.0")
+	post("7.0")
+
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/mesh/total_v", nil))
+	var body map[string]float64
+	json.Unmarshal(rec.Body.Bytes(), &body)
+	if math.Abs(body["mesh_total_v"]-7.0) > 1e-9 {
+		t.Fatalf("mesh_total_v = %v, want 7.0 (latest, not summed)", body["mesh_total_v"])
+	}
+}
+
 func TestBridgeDefenseHardensOnHostileInput(t *testing.T) {
 	t.Setenv("EVOLIA_HOME", t.TempDir())
 	key := []byte("fleet-secret")

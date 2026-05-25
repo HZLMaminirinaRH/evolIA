@@ -9,12 +9,8 @@ package bridge
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"os"
-	"path/filepath"
-	"strings"
-	"time"
 
 	"evolia/defense"
 	"evolia/mesh"
@@ -91,28 +87,11 @@ func saveParams(m map[string]float64) {
 	}
 }
 
-func sanitize(s string) string {
-	r := strings.NewReplacer("/", "_", "\\", "_", ".", "_", " ", "_")
-	out := r.Replace(s)
-	if out == "" {
-		return "peer"
-	}
-	return out
-}
-
-// StoreBlock writes a peer block into the mesh vault as a JSON file.
+// StoreBlock writes a peer block into the mesh vault, keyed by device id so
+// repeated posts from the same peer overwrite rather than accumulate (shared
+// with the UDP intake path, so TotalV never double-counts a peer).
 func StoreBlock(vault, device string, vValue float64) (string, error) {
-	if err := os.MkdirAll(vault, 0o700); err != nil {
-		return "", err
-	}
-	name := fmt.Sprintf("peer_%s_%d.json", sanitize(device), time.Now().UnixNano())
-	payload, _ := json.MarshalIndent(map[string]any{
-		"device_id": device,
-		"v_value":   vValue,
-		"timestamp": time.Now().UTC().Format(time.RFC3339),
-	}, "", "  ")
-	path := filepath.Join(vault, name)
-	return name, os.WriteFile(path, payload, 0o600)
+	return mesh.StorePeerBlock(vault, device, vValue)
 }
 
 func writeJSON(w http.ResponseWriter, status int, body any) {

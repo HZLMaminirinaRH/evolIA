@@ -127,19 +127,31 @@ func StoreIncoming(vault string, data []byte, key []byte) (string, map[string]fl
 	if len(key) > 0 && !VerifyBlock(key, b.Device, b.VValue, b.Sig) {
 		return "", nil, ErrBadSignature
 	}
-	if err := os.MkdirAll(vault, 0o700); err != nil {
-		return "", nil, err
-	}
-	name := fmt.Sprintf("recv_%s.json", sanitizeDevice(b.Device))
-	payload, _ := json.Marshal(map[string]any{
-		"device_id": b.Device,
-		"v_value":   b.VValue,
-		"timestamp": time.Now().UTC().Format(time.RFC3339),
-	})
-	if err := os.WriteFile(filepath.Join(vault, name), payload, 0o600); err != nil {
+	name, err := StorePeerBlock(vault, b.Device, b.VValue)
+	if err != nil {
 		return "", nil, err
 	}
 	return name, b.Params, nil
+}
+
+// StorePeerBlock writes a peer's value into the vault as recv_<device>.json,
+// keyed by device id so a re-send from the same peer overwrites rather than
+// accumulates — TotalV never double-counts a peer, whether the block arrived
+// over UDP (mesh-sync) or HTTP (the bridge). Returns the file name written.
+func StorePeerBlock(vault, device string, vValue float64) (string, error) {
+	if err := os.MkdirAll(vault, 0o700); err != nil {
+		return "", err
+	}
+	name := fmt.Sprintf("recv_%s.json", sanitizeDevice(device))
+	payload, _ := json.Marshal(map[string]any{
+		"device_id": device,
+		"v_value":   vValue,
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+	})
+	if err := os.WriteFile(filepath.Join(vault, name), payload, 0o600); err != nil {
+		return "", err
+	}
+	return name, nil
 }
 
 func sanitizeDevice(s string) string {

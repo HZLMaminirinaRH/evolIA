@@ -18,6 +18,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"evolia/bridge"
@@ -48,10 +49,12 @@ func main() {
 
 	seen := map[string]bool{}
 	var mu sync.Mutex
+	var attacks atomic.Uint64
 
 	// Receive blocks propagated by peers and store them in the vault.
-	go listenBlocks(vault, seen, &mu, key, def, logf)
+	go listenBlocks(vault, seen, &mu, key, def, &attacks, logf)
 
+	prevAttacks := attacks.Load()
 	for {
 		// Peers come from EVOLIA_PEERS plus whatever evolia-net has discovered.
 		peers := dedupe(append(parsePeers(os.Getenv("EVOLIA_PEERS")), mesh.LoadPeers()...))
@@ -72,6 +75,14 @@ func main() {
 			sendBlock(b.Device, b.VValue, params, peers, key, logf)
 		}
 		time.Sleep(cycle)
+
+		// On a quiet cycle (no hostile datagram since the last one) relax the
+		// adaptive defense one notch, so it breathes back down once attacks stop.
+		if cur := attacks.Load(); cur == prevAttacks {
+			def.Decay()
+		} else {
+			prevAttacks = cur
+		}
 	}
 }
 
@@ -79,7 +90,7 @@ func main() {
 // hardens the defense when input is hostile. Each stored block is marked seen
 // under the same lock the relay uses, so a received block is never forwarded
 // again (no amplification loops).
-func listenBlocks(vault string, seen map[string]bool, mu *sync.Mutex, key []byte, def *defense.AdaptiveDefense, logf func(string)) {
+func listenBlocks(vault string, seen map[string]bool, mu *sync.Mutex, key []byte, def *defense.AdaptiveDefense, attacks *atomic.Uint64, logf func(string)) {
 	addr, err := net.ResolveUDPAddr("udp", blockAddr)
 	if err != nil {
 		logf("block listen resolve error: " + err.Error())
@@ -110,10 +121,13 @@ func listenBlocks(vault string, seen map[string]bool, mu *sync.Mutex, key []byte
 			bridge.FuseIncoming(params)
 			logf("received " + name + " from " + src.IP.String())
 		case errors.Is(storeErr, mesh.ErrInjection):
+			attacks.Add(1)
 			logf(fmt.Sprintf("injection from %s rejected (defense=%.2f)", src.IP.String(), def.Record(defense.SQLInjection)))
 		case errors.Is(storeErr, mesh.ErrBadSignature):
+			attacks.Add(1)
 			logf(fmt.Sprintf("bad signature from %s rejected (defense=%.2f)", src.IP.String(), def.Record(defense.BadSignature)))
 		default:
+			attacks.Add(1)
 			logf(fmt.Sprintf("malformed from %s rejected (defense=%.2f)", src.IP.String(), def.Record(defense.Malformed)))
 		}
 	}

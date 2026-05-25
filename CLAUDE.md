@@ -104,7 +104,13 @@ Python `evolia_paths`, Go `mesh.Home`), so the services communicate through file
   input is rejected and **feeds the adaptive defense** (`go/defense`, mirroring
   `evolia-security::evolutive`) so the more attacks evolIA absorbs, the harder it defends. Without
   the key, blocks degrade to unsigned (single-device still works). Strictly reactive — never
-  retaliates.
+  retaliates. The defense also **relaxes** when the pressure stops: `mesh-sync` calls `Decay()`
+  on each quiet cycle (no hostile datagram since the last) and `evolia-bridge` decays on a ticker,
+  so the level breathes back down instead of only ever climbing.
+- Both intake paths store a peer block **keyed by device id** (`recv_<device>.json`) and overwrite
+  on re-send — the UDP receiver (`mesh.StoreIncoming`) and the HTTP bridge (`bridge.StoreBlock`,
+  via the shared `mesh.StorePeerBlock`) — so `TotalV` counts each peer once and never inflates
+  from repeated posts.
 
 The value economy is tunable in `evolia_evolve.py`: `ACTION_RATES` (video > photo > sms >
 screen) and `COEFF` (BLE > WiFi).
