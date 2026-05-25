@@ -137,8 +137,29 @@ class Security(val deviceId: String, masterPassword: String) {
         }
     }
 
-    private companion object {
-        const val NONCE_LEN = 12
-        const val TAG_BITS = 128
+    companion object {
+        private const val NONCE_LEN = 12
+        private const val TAG_BITS = 128
+        private const val FLEET_SALT = "evolia-mesh-fleet"
+
+        /**
+         * The owner-fleet HMAC key (EVOLIA_MESH_KEY), derived from the password
+         * alone with a fixed salt — so every device of the same owner derives
+         * the *same* key and can sign/verify each other's propagated blocks,
+         * while a different owner gets a different key. Returned as hex.
+         */
+        fun deriveFleetKey(password: String): String {
+            val params = Argon2Parameters.Builder(Argon2Parameters.ARGON2_id)
+                .withVersion(Argon2Parameters.ARGON2_VERSION_13)
+                .withIterations(2)
+                .withMemoryAsKB(19456)
+                .withParallelism(1)
+                .withSalt(FLEET_SALT.toByteArray(Charsets.UTF_8))
+                .build()
+            val generator = Argon2BytesGenerator().apply { init(params) }
+            val key = ByteArray(32)
+            generator.generateBytes(password.toByteArray(Charsets.UTF_8), key)
+            return key.joinToString("") { "%02x".format(it) }
+        }
     }
 }

@@ -94,6 +94,18 @@ gate) that CI cannot, follow the step-by-step [device validation guide](VALIDATI
   the home screen has a **Convertir V → BTC** button that queues a conversion of
   the current value, and the dashboard's BITCOIN line reflects it. Unit-tested
   (clamping, sat conversions, persist+reload). Phase 4 is complete.
+- **Phase 5 — evolutive defense + signed propagation. _Done._** Couples the
+  security spine to passive propagation, the same model in all three languages:
+  the more hostile input evolIA absorbs, the harder it defends (a bounded attack
+  buffer whose level rises and decays). Rust `evolia-security::evolutive`
+  (`a_global` = A_evo + P_free − D_evo, `AdaptiveDefense`, injection detector),
+  Go `defense` + HMAC-signed mesh blocks (`EVOLIA_MESH_KEY`) with defense-gated
+  intake on the bridge/mesh, and Kotlin `AdaptiveDefense`. The fleet key is
+  derived from the owner password alone (`Security.deriveFleetKey`, fixed salt),
+  so every device of the same owner signs/verifies each other's blocks;
+  `MainActivity` persists it and `EvoliaService` passes `EVOLIA_MESH_KEY` to the
+  Go children. Strictly reactive — detect, reject, harden, record; never
+  retaliates. Unit-tested in every layer.
 
 The Kotlin core mirrors `evolia_evolve.py` line-for-line; reference outputs
 (at-rest `V=0`, full-activity `V≈0.6109`, BLE > WiFi) match the Python core.

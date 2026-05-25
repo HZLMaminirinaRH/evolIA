@@ -47,6 +47,7 @@ class EvoliaService : Service() {
     // Owner session passed to the Go children (minted by the auth gate).
     private var sessionToken: String? = null
     private var deviceId: String? = null
+    private var meshKey: String? = null
 
     // Go binaries, packaged as lib*.so so Android extracts them executable.
     private val binaries = listOf(
@@ -117,6 +118,7 @@ class EvoliaService : Service() {
             val j = JSONObject(file.readText())
             sessionToken = j.optString("token").ifBlank { null }
             deviceId = j.optString("device_id").ifBlank { null }
+            meshKey = j.optString("mesh_key").ifBlank { null }
         } catch (_: Exception) {
             // No usable session — children still run with EVOLIA_HOME only.
         }
@@ -131,6 +133,7 @@ class EvoliaService : Service() {
                 builder.environment()["EVOLIA_HOME"] = home.absolutePath
                 sessionToken?.let { builder.environment()["EVOLIA_SESSION_TOKEN"] = it }
                 deviceId?.let { builder.environment()["EVOLIA_DEVICE_ID"] = it }
+                meshKey?.let { builder.environment()["EVOLIA_MESH_KEY"] = it }
                 val process = builder.start()
                 synchronized(processes) { processes.add(process) }
                 process.waitFor()

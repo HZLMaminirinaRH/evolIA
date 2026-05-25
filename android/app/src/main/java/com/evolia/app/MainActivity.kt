@@ -149,11 +149,18 @@ class MainActivity : AppCompatActivity() {
         val deviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)
             ?: "android-device"
         val token = Security(deviceId, password).generateSessionToken("owner", SESSION_SECS).token
+        // Fleet key (password-derived) so the Go mesh layer signs/verifies blocks
+        // across this owner's devices.
+        val meshKey = Security.deriveFleetKey(password)
 
         val paths = EvoliaPaths(File(filesDir, "evolia"))
         paths.home.mkdirs()
         paths.sessionState.writeText(
-            JSONObject().put("token", token).put("device_id", deviceId).toString(),
+            JSONObject()
+                .put("token", token)
+                .put("device_id", deviceId)
+                .put("mesh_key", meshKey)
+                .toString(),
         )
 
         pendingStart = true

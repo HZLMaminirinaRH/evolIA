@@ -2,6 +2,7 @@ package com.evolia.app.security
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -54,5 +55,13 @@ class SecurityTest {
         val s = Security("dev-1", "password123")
         val tok = s.generateSessionToken("owner", -1)
         assertNull(s.validateSessionToken(tok.token))
+    }
+
+    @Test
+    fun fleetKeyIsDeterministicPerPassword() {
+        val a = Security.deriveFleetKey("password123")
+        assertEquals("same password => same fleet key", a, Security.deriveFleetKey("password123"))
+        assertNotEquals("different password => different fleet key", a, Security.deriveFleetKey("other-pass"))
+        assertEquals("32-byte key in hex", 64, a.length)
     }
 }
