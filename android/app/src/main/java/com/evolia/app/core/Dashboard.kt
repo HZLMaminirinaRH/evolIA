@@ -32,12 +32,6 @@ object Dashboard {
         val cognitivePower: Double,
     )
 
-    private const val USD_PER_BTC = 70_000.0
-
-    fun satToBtc(sat: Long): Double = sat / 100_000_000.0
-
-    fun satToUsd(sat: Long): Double = satToBtc(sat) * USD_PER_BTC
-
     fun collect(paths: EvoliaPaths): Snapshot {
         val identity = readJson(paths.identityState)
         val personalV = identity?.optDouble("total_v", 0.0) ?: 0.0
@@ -58,8 +52,8 @@ object Dashboard {
             bitcoin = Bitcoin(
                 addresses = addresses,
                 balanceSat = balanceSat,
-                balanceBtc = satToBtc(balanceSat),
-                balanceUsd = satToUsd(balanceSat),
+                balanceBtc = BitcoinBridge.satToBtc(balanceSat),
+                balanceUsd = BitcoinBridge.satToUsd(balanceSat),
                 conversions = conversions,
             ),
             cognitivePower = personalV + meshV + ganacheV,

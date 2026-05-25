@@ -88,7 +88,12 @@ gate) that CI cannot, follow the step-by-step [device validation guide](VALIDATI
   `mesh-sync` now listens on UDP `:5555` and stores peer-propagated blocks into
   the vault (`mesh.StoreIncoming`), closing the propagation loop — blocks were
   sent but never received before. Received blocks are marked seen so they are
-  never re-propagated (no amplification). *Planned:* the BTC conversion port (4c).
+  never re-propagated (no amplification). *Done (4c, BTC):* `BitcoinBridge`
+  (`core/`) ports `evolia_bitcoin.py` — `vToSat` (value→satoshis, clamped to the
+  per-tx bounds) plus wallet/conversion-history persistence to the same files;
+  the home screen has a **Convertir V → BTC** button that queues a conversion of
+  the current value, and the dashboard's BITCOIN line reflects it. Unit-tested
+  (clamping, sat conversions, persist+reload). Phase 4 is complete.
 
 The Kotlin core mirrors `evolia_evolve.py` line-for-line; reference outputs
 (at-rest `V=0`, full-activity `V≈0.6109`, BLE > WiFi) match the Python core.

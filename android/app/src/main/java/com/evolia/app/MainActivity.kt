@@ -20,6 +20,7 @@ import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import com.evolia.app.core.ActionQueue
+import com.evolia.app.core.BitcoinBridge
 import com.evolia.app.core.Dashboard
 import com.evolia.app.core.EvoliaPaths
 import com.evolia.app.security.AuthStore
@@ -85,6 +86,18 @@ class MainActivity : AppCompatActivity() {
                 status.text = "Action enregistrée (sera prise au prochain cycle)."
             }
         }
+        val convertBtc = Button(this).apply {
+            text = "Convertir V → BTC"
+            setOnClickListener {
+                val paths = EvoliaPaths(File(filesDir, "evolia"))
+                val bridge = BitcoinBridge(paths)
+                bridge.load()
+                val v = Dashboard.collect(paths).personal.totalV
+                val conv = bridge.queueConversion(v)
+                toast("Conversion V=%.2f → %d SAT (pending)".format(v, conv.optLong("sat")))
+                status.text = readStatus()
+            }
+        }
 
         setContentView(
             LinearLayout(this).apply {
@@ -93,6 +106,7 @@ class MainActivity : AppCompatActivity() {
                 addView(start)
                 addView(stop)
                 addView(recordVideo)
+                addView(convertBtc)
                 addView(refresh)
                 addView(status)
             },
