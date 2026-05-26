@@ -71,6 +71,48 @@ def test_ganache_no_value_is_local_noop():
     assert entry["v_value"] == 0.0
 
 
+# --- proof queue (full-fidelity on-chain anchoring) --------------------------
+
+def _queue(proofs):
+    paths.ensure_home()
+    with open(paths.proof_queue(), "a") as f:
+        for p in proofs:
+            f.write(json.dumps(p) + "\n")
+
+
+def _proof(v_value, v_prev, actions):
+    return {"v_value": v_value, "work": {"v_prev": v_prev, "actions": actions, "v": 0.0, "dt": 5.0}}
+
+
+def test_proof_queue_take_is_atomic_and_requeue_roundtrips():
+    _home(None)
+    _queue([_proof(2.0, 0.0, {"screen_input": 40}), _proof(4.5, 2.0, {"photo_taken": 1})])
+    batch = ganache_db.take_proof_batch()
+    assert [b["v_value"] for b in batch] == [2.0, 4.5]
+    # The take atomically empties the queue (new cycles append to a fresh file).
+    assert ganache_db.take_proof_batch() == []
+    # Unanchored proofs go back for the next sync.
+    ganache_db.requeue_proofs(batch)
+    assert len(ganache_db.take_proof_batch()) == 2
+
+
+def test_proof_queue_is_bounded():
+    _home(None)
+    overflow = [_proof(float(i), 0.0, {"screen_input": 1}) for i in range(ganache_db.MAX_QUEUE + 50)]
+    ganache_db.requeue_proofs(overflow)
+    assert len(ganache_db.take_proof_batch()) == ganache_db.MAX_QUEUE
+
+
+def test_proof_queue_local_mode_keeps_proofs():
+    # No node reachable: the queued proofs must survive (not be dropped) so they
+    # anchor when a node returns — never lose a proven increment.
+    _home(None)
+    _queue([_proof(2.0, 0.0, {"screen_input": 40})])
+    entry = ganache_db.sync_once()
+    assert entry["status"] == "local"
+    assert len(ganache_db.take_proof_batch()) == 1
+
+
 # --- dashboard interop -------------------------------------------------------
 
 def test_dashboard_aggregates_shared_state():

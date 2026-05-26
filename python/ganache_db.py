@@ -57,24 +57,6 @@ def read_total_v() -> float:
         return 0.0
 
 
-def read_work_proof() -> dict | None:
-    """Return the latest cognitive proof {v_value, work{actions, v, dt, ...}} the
-    value model emitted, or None when absent/malformed. This is what lets the
-    chain recompute and verify the increment instead of trusting a bare number."""
-    path = paths.work_proof()
-    if not path.exists():
-        return None
-    try:
-        proof = json.loads(path.read_text())
-    except (OSError, ValueError):
-        return None
-    if not isinstance(proof, dict) or not isinstance(proof.get("work"), dict):
-        return None
-    if not isinstance(proof["work"].get("actions"), dict):
-        return None
-    return proof
-
-
 def proof_to_args(work: dict) -> tuple:
     """Scale a work proof to anchorProof's integer arguments, mirroring the
     contract's fixed point: action counts (capped to the rate the contract
@@ -169,70 +151,139 @@ def _supports_proof(contract) -> bool:
         return False
 
 
-def _anchor_marker_path():
-    return paths.evolia_home() / "evolia_anchor_marker.json"
+# A node can be offline for a long time; bound the backlog so the queue can't
+# grow without limit on a mobile device. The newest proofs are kept; the oldest
+# spill (the chain then trails total_v by the spilled increments — only ever
+# under a sustained offline spell larger than this many value-advancing cycles).
+MAX_QUEUE = 5000
 
 
-def _last_anchored_v() -> float:
-    """The proof v_value last anchored on-chain (0 if none), so a sync that finds
-    no new cycle does not re-anchor and double-count the same increment."""
-    p = _anchor_marker_path()
-    if not p.exists():
-        return 0.0
+def take_proof_batch() -> list[dict]:
+    """Atomically take every queued proof (oldest first); cycles produced after
+    this call append to a fresh queue. Mirrors evolia_actions.drain()."""
+    q = paths.proof_queue()
+    if not q.exists():
+        return []
+    tmp = q.with_suffix(".draining")
     try:
-        return float(json.loads(p.read_text()).get("v_value", 0.0))
-    except (OSError, ValueError):
-        return 0.0
+        os.replace(q, tmp)  # atomic on the same filesystem
+    except OSError:
+        return []
+    proofs: list[dict] = []
+    for line in tmp.read_text().splitlines():
+        try:
+            p = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(p, dict) and isinstance(p.get("work"), dict):
+            proofs.append(p)
+    tmp.unlink(missing_ok=True)
+    return proofs
 
 
-def _mark_anchored(v_value: float) -> None:
+def requeue_proofs(proofs: list[dict]) -> None:
+    """Return unanchored proofs to the queue for the next sync. Re-appending is a
+    plain, race-free append (the same op the producer uses): order does not matter
+    because the contract sums increments — provenValue is commutative. Bounded to
+    the newest MAX_QUEUE so an unreachable node can't grow the backlog forever."""
+    proofs = proofs[-MAX_QUEUE:]
+    if not proofs:
+        return
     paths.ensure_home()
-    paths.atomic_write_text(_anchor_marker_path(), json.dumps({"v_value": v_value}))
+    with open(paths.proof_queue(), "a") as f:
+        for p in proofs:
+            f.write(json.dumps(p) + "\n")
+
+
+def _is_revert(exc: Exception) -> bool:
+    """A deterministic on-chain rejection (a forged/invalid proof) vs a transient
+    infrastructure error. A revert will never anchor, so the proof is dropped;
+    anything else (node down, timeout) is kept and retried."""
+    return any(s in type(exc).__name__ for s in ("ContractLogic", "Revert", "TransactionFailed"))
+
+
+def anchor_proof_batch(w3, contract, account, proofs):
+    """Anchor each queued proof in order. Returns (anchored, dropped, unanchored):
+    a reverting proof is dropped (logged), the first infrastructure failure stops
+    the batch and returns the unanchored remainder for retry."""
+    anchored = 0
+    dropped = 0
+    for i, p in enumerate(proofs):
+        try:
+            anchor_proof_on_contract(w3, contract, account, p["work"])
+            anchored += 1
+        except Exception as exc:  # noqa: BLE001 - classified by _is_revert
+            if _is_revert(exc):
+                dropped += 1
+                continue
+            return anchored, dropped, proofs[i:]
+    return anchored, dropped, []
 
 
 def sync_once() -> dict:
-    """Anchor the current value once. Returns the log entry that was written.
-
-    Prefers the proven path (anchorProof recomputes the increment on-chain); only
-    falls back to the legacy self-declared snapshot when no proof / no support."""
+    """Anchor once. Drains the per-cycle proof queue so the chain's provenValue
+    tracks total_v cycle-for-cycle (full fidelity). Each proof is removed only
+    after it anchors on-chain; unanchored proofs are kept for the next sync. Falls
+    back to the legacy self-declared snapshot only when no proofs are queued and
+    the contract lacks anchorProof. Returns the log entry that was written."""
     v_value = read_total_v()
-    proof = read_work_proof()
-
+    batch = take_proof_batch()
     conn = _connect()
+
+    # Proofs queued but no node reachable: keep them (bounded) for later.
+    if batch and conn is None:
+        requeue_proofs(batch)
+        entry = build_log_entry(v_value, "local", note=f"{len(batch)} proof(s) queued (web3/contract unavailable)")
+        log_sync(entry)
+        return entry
+
+    # Proofs queued and a node is up: anchor the verified increments.
+    if batch:
+        w3, contract = conn
+        if not _supports_proof(contract):
+            requeue_proofs(batch)  # contract predates anchorProof; keep + snapshot
+            entry = _legacy_anchor(w3, contract, v_value)
+            log_sync(entry)
+            return entry
+        anchored, dropped, unanchored = anchor_proof_batch(w3, contract, w3.eth.default_account, batch)
+        requeue_proofs(unanchored)
+        proven = contract.functions.provenValue().call()
+        status = "success" if not unanchored else ("partial" if anchored else "failed")
+        entry = build_log_entry(
+            proven / 100.0, status, mode="proven",
+            anchored=anchored, dropped=dropped, requeued=len(unanchored),
+            proven_value_centi=proven,
+        )
+        log_sync(entry)
+        return entry
+
+    # No proofs queued: heartbeat, or the legacy self-declared snapshot path.
     if conn is None:
-        note = "no value to anchor" if v_value <= 0 and proof is None else "web3/contract unavailable"
+        note = "no value to anchor" if v_value <= 0 else "web3/contract unavailable"
         entry = build_log_entry(v_value, "local", note=note)
         log_sync(entry)
         return entry
-
     w3, contract = conn
-
-    # Proven path: let the contract recompute and verify the increment.
-    if proof is not None and _supports_proof(contract):
-        proof_v = float(proof.get("v_value", 0.0))
-        if proof_v <= _last_anchored_v() + 1e-9:
-            entry = build_log_entry(v_value, "local", note="no new cycle proof to anchor")
-            log_sync(entry)
-            return entry
-        try:
-            entry = anchor_proof_on_contract(w3, contract, w3.eth.default_account, proof["work"])
-            _mark_anchored(proof_v)
-        except Exception as exc:  # pragma: no cover - network/contract path
-            entry = build_log_entry(v_value, "failed", error=str(exc))
+    if _supports_proof(contract):
+        # Verified contract, nothing new to prove this cycle: don't self-declare.
+        note = "no value to anchor" if v_value <= 0 else "no new cycle proof to anchor"
+        entry = build_log_entry(v_value, "local", note=note)
         log_sync(entry)
         return entry
-
-    # Legacy fallback: self-declared snapshot (proofless bootstrap / old ABI).
-    if v_value <= 0:
-        entry = build_log_entry(v_value, "local", note="no value to anchor")
-        log_sync(entry)
-        return entry
-    try:
-        entry = anchor_on_contract(w3, contract, w3.eth.default_account, v_value)
-    except Exception as exc:  # pragma: no cover - network path
-        entry = build_log_entry(v_value, "failed", error=str(exc))
+    entry = _legacy_anchor(w3, contract, v_value)
     log_sync(entry)
     return entry
+
+
+def _legacy_anchor(w3, contract, v_value) -> dict:
+    """Self-declared snapshot fallback (proofless bootstrap / pre-anchorProof
+    contract). Does not write to the sync log; the caller does."""
+    if v_value <= 0:
+        return build_log_entry(v_value, "local", note="no value to anchor")
+    try:
+        return anchor_on_contract(w3, contract, w3.eth.default_account, v_value)
+    except Exception as exc:  # pragma: no cover - network path
+        return build_log_entry(v_value, "failed", error=str(exc))
 
 
 def sync_continuous(interval: int = 30) -> None:

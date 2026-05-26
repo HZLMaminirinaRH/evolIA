@@ -150,6 +150,32 @@ def test_work_proof_reconciles_with_formula():
     assert w["actions"] == {"photo_taken": 2, "screen_input": 10}
 
 
+def test_proof_queue_appends_value_advancing_cycles():
+    # Every value-advancing cycle appends one proof line to the durable queue, so
+    # ganache_db can anchor each increment on-chain exactly once (full fidelity).
+    import os
+    from evolia_value import SENSOR_FLOOR
+
+    home = Path(tempfile.mkdtemp())
+    os.environ["EVOLIA_HOME"] = str(home)
+    v = EvoliaValue(state_path=home / "state.json")
+    v.record_action("photo_taken", 1)
+    v.cycle(SensorSample(), elapsed_seconds=5.0)
+    v.record_action("screen_input", 4)
+    v.cycle(SensorSample(), elapsed_seconds=5.0)
+
+    lines = paths.proof_queue().read_text().splitlines()
+    assert len(lines) == 2, lines
+    # Each queued proof reconciles with the formula the contract recomputes.
+    for line in lines:
+        p = json.loads(line)
+        w = p["work"]
+        base = sum(ACTION_RATES[k] * c for k, c in w["actions"].items())
+        expected = base * (1.0 + w["v"]) + SENSOR_FLOOR * w["v"]
+        assert abs((p["v_value"] - w["v_prev"]) - expected) < 1e-9
+        assert 0.0 <= w["v"] <= 1.0 and w["dt"] > 0
+
+
 def test_save_is_atomic_no_temp_left():
     path = _tmp_state()
     v = EvoliaValue(state_path=path)

@@ -49,6 +49,8 @@ python/                  services that produce/consume the shared state
   evolia_evolve.py       THE evolutive formula (exponential) — the cognitive core
   evolia_value.py        accumulator: base(actions) x (1+V) + sensor floor; emits a
                          per-cycle cognitive proof-of-work (evolia_work_proof.json)
+                         + appends each value-advancing cycle's proof to the
+                         durable anchor queue (evolia_proof_queue.jsonl)
   evolia_learning.py     Super-peer learning: aggregate peer blocks, evolve parameters
                          asymmetrically (not symmetric gossip). Learn action effectiveness,
                          sensor correlations, user engagement patterns; output evolved params.
@@ -75,13 +77,14 @@ android/                 Plan B: Kotlin app — foreground service supervising t
 On-chain anchoring is optional and self-contained: `contracts/EvoliaCore.json`
 ships the compiled ABI+bytecode (no solc needed at deploy time). With `web3`
 installed and a node reachable, `evolia_deploy.py` deploys it (idempotently) and
-`ganache_db.py` anchors each sync. Anchoring prefers the **proven path**: when a
-cognitive work proof is present, it calls `EvoliaCore.anchorProof`, which
-**recomputes the value increment on-chain** (`ΔV = base(actions)·(1+v) + floor·v`
-in centi-BTC-e) and enforces the physical per-action **rate caps** — so the
-contract's `provenValue` is the on-chain-verified sum, not a self-declared number
-(a forged proof reverts). It falls back to the legacy self-declared `anchorValue`
-snapshot only when no proof is available (proofless bootstrap) or the deployed
+`ganache_db.py` anchors each sync. Anchoring prefers the **proven path**: it
+drains the per-cycle proof queue (`evolia_proof_queue.jsonl`) and calls
+`EvoliaCore.anchorProof` for each, which **recomputes the value increment
+on-chain** (`ΔV = base(actions)·(1+v) + floor·v` in centi-BTC-e) and enforces the
+physical per-action **rate caps** — so the contract's `provenValue` is the
+on-chain-verified sum, not a self-declared number (a forged proof reverts), and
+tracks `total_v` cycle-for-cycle. It falls back to the legacy self-declared
+`anchorValue` snapshot only when no proof is queued (proofless bootstrap) or the deployed
 contract predates `anchorProof`. The contract mirrors the Go `pow` validator and
 `evolia_evolve.py` (rates/caps); **keep the constants in sync across the three
 languages.** `ganache_db.anchor_on_contract`, `anchor_proof_on_contract` and the
@@ -95,7 +98,17 @@ compiler}` to `contracts/EvoliaCore.json`.
 
 `evolia_actions.py` only ever appends events to `evolia_action_queue.jsonl`; the
 single state owner `evolia_run.py` drains that queue each cycle, so there is
-exactly one writer of the value state (race-free). `evolia-net` writes
+exactly one writer of the value state (race-free). The same append-only/drain
+pattern carries proofs to the chain: `evolia_value.py` appends each
+value-advancing cycle's proof to `evolia_proof_queue.jsonl`, and `ganache_db.py`
+drains it (`take_proof_batch`, atomic rename like `evolia_actions.drain`),
+anchoring each via `anchorProof`. A proof leaves the queue only after it anchors
+on-chain; an unreachable node or transient failure re-queues the remainder
+(`requeue_proofs`, a race-free append — `provenValue` is commutative so order is
+irrelevant), bounded to the newest `MAX_QUEUE` so an offline spell can't grow it
+unbounded. A deterministically-reverting (forged/corrupt) proof is dropped. This
+makes the on-chain `provenValue` track `total_v` cycle-for-cycle (full fidelity),
+not a periodic sample. `evolia-net` writes
 `evolia_peers.json`; mesh-sync reloads it each cycle to know where to propagate.
 `evolia-bridge` accepts peer blocks over HTTP, stores them in the mesh vault
 (so mesh-sync/dashboard pick them up) and fuses incoming cognitive params into

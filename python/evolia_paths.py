@@ -81,6 +81,14 @@ def work_proof() -> Path:
     return evolia_home() / "evolia_work_proof.json"
 
 
+def proof_queue() -> Path:
+    """Append-only queue of per-cycle work proofs awaiting on-chain anchoring.
+    The value model appends one line per value-advancing cycle; ganache_db drains
+    it and anchors each via EvoliaCore.anchorProof, so every cycle's verified
+    increment lands on-chain exactly once (full fidelity, not sampled)."""
+    return evolia_home() / "evolia_proof_queue.jsonl"
+
+
 def mesh_vault() -> Path:
     return evolia_home() / "evolia_mesh_vault"
 

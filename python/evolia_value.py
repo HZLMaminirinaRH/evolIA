@@ -119,6 +119,15 @@ class EvoliaValue:
         }
         paths.atomic_write_text(paths.work_proof(), json.dumps(proof, indent=2))
 
+        # Durably queue this cycle's proof for on-chain anchoring. Only cycles
+        # that advance the value are enqueued (a zero-gain cycle would revert
+        # EvoliaCore.anchorProof's require(gain>0)). The queue is append-only and
+        # drained by ganache_db, so every increment is anchored exactly once —
+        # the chain's provenValue tracks total_v cycle-for-cycle, not sampled.
+        if self.total_v - v_prev > 1e-9:
+            with open(paths.proof_queue(), "a") as f:
+                f.write(json.dumps(proof) + "\n")
+
     # --- persistence ---------------------------------------------------------
 
     def to_dict(self) -> dict:
