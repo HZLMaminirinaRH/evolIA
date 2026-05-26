@@ -41,12 +41,16 @@ class AndroidSensors(context: Context) : SensorEventListener {
     private var bleScanner: BluetoothLeScanner? = null
     private val bleCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
-            bleDevices.add(result.device.address)
+            // Only nearby devices count as a real interaction (mirror of the
+            // RSSI filter in evolia_sensors.py); a far, weak signal is noise.
+            if (result.rssi >= NEAR_RSSI_DBM) bleDevices.add(result.device.address)
         }
     }
 
     fun start() {
-        register(Sensor.TYPE_ACCELEROMETER)
+        // Linear acceleration (gravity removed) is the movement signal, matching
+        // evolia_sensors.read_motion — ~0 at rest, rising with real motion.
+        register(Sensor.TYPE_LINEAR_ACCELERATION)
         register(Sensor.TYPE_GYROSCOPE)
         register(Sensor.TYPE_MAGNETIC_FIELD)
         startBle()
@@ -70,7 +74,7 @@ class AndroidSensors(context: Context) : SensorEventListener {
         for (i in 0 until n) sumSq += v[i].toDouble() * v[i]
         val magnitude = sqrt(sumSq)
         when (event.sensor.type) {
-            Sensor.TYPE_ACCELEROMETER -> accelerometer = magnitude
+            Sensor.TYPE_LINEAR_ACCELERATION -> accelerometer = magnitude
             Sensor.TYPE_GYROSCOPE -> gyroscope = magnitude
             Sensor.TYPE_MAGNETIC_FIELD -> magnetometer = magnitude
         }
@@ -110,7 +114,7 @@ class AndroidSensors(context: Context) : SensorEventListener {
     private fun wifiCount(): Int = try {
         val wm = app.getSystemService(Context.WIFI_SERVICE) as WifiManager
         @Suppress("DEPRECATION")
-        wm.scanResults?.size ?: 0
+        wm.scanResults?.count { it.level >= NEAR_RSSI_DBM } ?: 0
     } catch (_: Exception) {
         0
     }
@@ -149,5 +153,11 @@ class AndroidSensors(context: Context) : SensorEventListener {
             wifiCount = wifiCount(),
             bleCount = ble,
         )
+    }
+
+    companion object {
+        // Minimum signal strength (dBm) to count an AP/device as a nearby
+        // interaction. Must match NEAR_RSSI_DBM in evolia_sensors.py.
+        private const val NEAR_RSSI_DBM = -70
     }
 }

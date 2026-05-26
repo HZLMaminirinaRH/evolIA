@@ -4,10 +4,10 @@
 
 Reads the device signals that feed the value model:
 
-    motion   accelerometer, gyroscope, magnetometer   (termux-sensor)
-    location GPS / network fix                         (termux-location)
-    wifi     nearby access points                      (termux-wifi-scaninfo)
-    ble      nearby Bluetooth LE devices               (termux-bluetooth-scaninfo)
+    motion   linear acceleration, gyroscope, magnetometer (termux-sensor)
+    location GPS / network fix                            (termux-location)
+    wifi     nearby access points (RSSI-filtered)         (termux-wifi-scaninfo)
+    ble      nearby Bluetooth LE devices (RSSI-filtered)  (termux-bluetooth-scaninfo)
 
 Every reader degrades gracefully: if the termux-api binary is missing or the
 call fails (e.g. running off-device, or location disabled), it returns a
@@ -27,7 +27,7 @@ from dataclasses import dataclass
 class SensorSample:
     """One instantaneous reading of every tracked sensor."""
 
-    accelerometer: float = 0.0  # m/s^2, vector magnitude
+    accelerometer: float = 0.0  # linear acceleration (gravity removed), m/s^2
     gyroscope: float = 0.0      # rad/s, vector magnitude
     magnetometer: float = 0.0   # microtesla, vector magnitude
     location_fix: bool = False  # True if a GPS/network fix was obtained
@@ -57,10 +57,13 @@ def _magnitude(values) -> float:
 
 
 def read_motion() -> tuple[float, float, float]:
-    """Return (accel, gyro, magneto) magnitudes from termux-sensor.
+    """Return (linear_accel, gyro, magneto) magnitudes from termux-sensor.
 
-    Sensor names vary by device, so we classify by keyword and skip the
-    'uncalibrated' / 'linear' variants to avoid double counting.
+    For motion we read the *linear* acceleration (gravity removed): it sits at
+    ~0 at rest and rises with real movement, so it tracks activity far better
+    than the raw accelerometer, whose constant ~9.8 gravity floor would drown
+    the signal out. Sensor names vary by device, so we classify by keyword and
+    skip the 'uncalibrated' variants to avoid double counting.
     """
     if not _have("termux-sensor"):
         return 0.0, 0.0, 0.0
@@ -74,7 +77,7 @@ def read_motion() -> tuple[float, float, float]:
         low = name.lower()
         if "uncalib" in low:
             continue
-        if "accel" in low and "linear" not in low and accel == 0.0:
+        if "linear" in low and "accel" in low and accel == 0.0:
             accel = mag
         elif "gyro" in low and gyro == 0.0:
             gyro = mag
@@ -91,20 +94,50 @@ def read_location() -> bool:
     return isinstance(data, dict) and "latitude" in data
 
 
+# Only signals at least this strong (dBm) count as a real nearby interaction;
+# a far, weak AP/device is ambient noise, not engagement. Higher (less negative)
+# means closer. Must match NEAR_RSSI_DBM in android/AndroidSensors.kt.
+NEAR_RSSI_DBM = -70
+
+
+def _rssi(entry: dict) -> float | None:
+    """Signal strength (dBm) from a scan entry, trying the common field names;
+    None when the scan omits it (then we can't filter, so the entry is kept)."""
+    for key in ("rssi", "level", "RSSI"):
+        val = entry.get(key)
+        if isinstance(val, (int, float)):
+            return float(val)
+    return None
+
+
+def _count_near(data, threshold: int = NEAR_RSSI_DBM) -> int:
+    """Count scan entries within RSSI threshold (nearby). An entry with no
+    reported RSSI is counted — we can't filter what we can't measure, so this
+    degrades to the plain visible-count on devices that omit signal strength."""
+    if not isinstance(data, list):
+        return 0
+    n = 0
+    for e in data:
+        if not isinstance(e, dict):
+            continue
+        rssi = _rssi(e)
+        if rssi is None or rssi >= threshold:
+            n += 1
+    return n
+
+
 def read_wifi_count() -> int:
-    """Number of visible WiFi access points."""
+    """Number of *nearby* WiFi access points (RSSI >= NEAR_RSSI_DBM)."""
     if not _have("termux-wifi-scaninfo"):
         return 0
-    data = _run_json(["termux-wifi-scaninfo"])
-    return len(data) if isinstance(data, list) else 0
+    return _count_near(_run_json(["termux-wifi-scaninfo"]))
 
 
 def read_ble_count() -> int:
-    """Number of visible BLE devices (best-effort; 0 if unsupported)."""
+    """Number of *nearby* BLE devices (RSSI >= NEAR_RSSI_DBM; best-effort)."""
     if not _have("termux-bluetooth-scaninfo"):
         return 0
-    data = _run_json(["termux-bluetooth-scaninfo"], timeout=15)
-    return len(data) if isinstance(data, list) else 0
+    return _count_near(_run_json(["termux-bluetooth-scaninfo"], timeout=15))
 
 
 def read_all() -> SensorSample:

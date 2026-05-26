@@ -206,6 +206,18 @@ Python `evolia_paths`, Go `mesh.Home`), so the services communicate through file
 The value economy is tunable in `evolia_evolve.py`: `ACTION_RATES` (video > photo > sms >
 screen) and `COEFF` (BLE > WiFi). The Super-peer learns optimal tuning from peer behavior.
 
+Sensor capture is sharpened so it tracks real engagement, not ambient noise:
+`evolia_sensors.read_motion` reads the **linear acceleration** (gravity removed) for the
+motion signal — ~0 at rest, rising with actual movement — instead of the raw accelerometer
+whose constant ~9.8 gravity floor drowned it out; the normalization scale is
+`_LINEAR_ACCEL_SCALE` in `evolia_evolve.py` (~10-17, where brisk movement saturates). WiFi/BLE
+scans are filtered by signal strength (`NEAR_RSSI_DBM = -70`): only nearby APs/devices count,
+so a far weak signal isn't valued as interaction (scans without an RSSI field degrade to the
+plain visible-count). The Android Kotlin port mirrors both: `AndroidSensors` registers
+`TYPE_LINEAR_ACCELERATION` and RSSI-filters WiFi/BLE, and `Evolve.LINEAR_ACCEL_SCALE` matches
+the Python scale — **keep these two in sync across Python and Kotlin** (Go/Rust/Solidity take
+the declared `v` as given, so they are unaffected).
+
 `evolia-start` authenticates the owner, derives the security key **in-process** from the
 just-verified password (the "liaison directe" between auth and security), mints a session
 token, and launches the configured services — passing `EVOLIA_SESSION_TOKEN` and

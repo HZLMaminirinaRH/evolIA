@@ -6,7 +6,7 @@ import kotlin.math.min
 
 /** One instantaneous reading of every tracked sensor (mirror of Python SensorSample). */
 data class SensorSample(
-    val accelerometer: Double = 0.0, // m/s^2, vector magnitude
+    val accelerometer: Double = 0.0, // linear acceleration (gravity removed), m/s^2
     val gyroscope: Double = 0.0,     // rad/s, vector magnitude
     val magnetometer: Double = 0.0,  // microtesla, vector magnitude
     val locationFix: Boolean = false,
@@ -56,14 +56,20 @@ object Evolve {
 
     private const val CAP = 3.0
 
+    // Motion normalization. accelerometer is the *linear* acceleration (gravity
+    // removed): ~0 at rest, peaking ~10-17 m/s² on brisk movement. Keep in sync
+    // with _LINEAR_ACCEL_SCALE in evolia_evolve.py.
+    private const val LINEAR_ACCEL_SCALE = 12.0
+    private const val GYRO_SCALE = 4.36
+
     private fun expS(x: Double, scale: Double): Double = exp(min(x / scale, CAP))
 
     fun actionScore(counts: Map<String, Int>): Double =
         ACTION_RATES.entries.sumOf { (k, rate) -> rate * (counts[k] ?: 0) }
 
     private fun motion(s: SensorSample): Double {
-        val accel = min(s.accelerometer / 19.6, 1.0)
-        val gyro = min(s.gyroscope / 4.36, 1.0)
+        val accel = min(s.accelerometer / LINEAR_ACCEL_SCALE, 1.0)
+        val gyro = min(s.gyroscope / GYRO_SCALE, 1.0)
         return (accel + gyro) / 2.0
     }
 
