@@ -56,10 +56,14 @@ python/                  services that produce/consume the shared state
   evolia_actions.py      action capture (SMS/photo/video + CLI) -> action queue
   evolia_run.py          main loop: drain action queue + sample sensors + cycle
   evolia_deploy.py       deploy EvoliaCore from the prebuilt artifact (web3)
-  ganache_db.py          anchor total_v on-chain (web3); LOCAL mode without it
+  ganache_db.py          anchor value on-chain (web3); prefers anchorProof (chain
+                         recomputes+verifies the PoW increment), legacy snapshot
+                         fallback; LOCAL mode without web3
   evolia_bitcoin.py      V -> satoshi conversion + wallet/conversion state
   dashboard.py           read-only aggregation of the shared state
-contracts/               EvoliaCore.sol + prebuilt EvoliaCore.json (abi+bytecode)
+contracts/               EvoliaCore.sol (on-chain PoW verifier: anchorProof
+                         recomputes ΔV + enforces rate caps -> provenValue) +
+                         prebuilt EvoliaCore.json (abi+bytecode)
 android/                 Plan B: Kotlin app — foreground service supervising the
                          Go binaries + a native Kotlin port of the value engine
                          (core/: Evolve, EvoliaValue, ActionQueue, EvoliaPaths;
@@ -69,11 +73,25 @@ android/                 Plan B: Kotlin app — foreground service supervising t
 ```
 
 On-chain anchoring is optional and self-contained: `contracts/EvoliaCore.json`
-ships the compiled ABI+bytecode (no solc needed). With `web3` installed and a
-node reachable, `evolia_deploy.py` deploys it (idempotently) and `ganache_db.py`
-calls `anchorValue` each sync; `ganache_db.anchor_on_contract` is unit-tested
-against an in-process EVM in `tests/test_web3.py`. Without web3, `ganache_db`
-logs in LOCAL mode and the rest is unaffected.
+ships the compiled ABI+bytecode (no solc needed at deploy time). With `web3`
+installed and a node reachable, `evolia_deploy.py` deploys it (idempotently) and
+`ganache_db.py` anchors each sync. Anchoring prefers the **proven path**: when a
+cognitive work proof is present, it calls `EvoliaCore.anchorProof`, which
+**recomputes the value increment on-chain** (`ΔV = base(actions)·(1+v) + floor·v`
+in centi-BTC-e) and enforces the physical per-action **rate caps** — so the
+contract's `provenValue` is the on-chain-verified sum, not a self-declared number
+(a forged proof reverts). It falls back to the legacy self-declared `anchorValue`
+snapshot only when no proof is available (proofless bootstrap) or the deployed
+contract predates `anchorProof`. The contract mirrors the Go `pow` validator and
+`evolia_evolve.py` (rates/caps); **keep the constants in sync across the three
+languages.** `ganache_db.anchor_on_contract`, `anchor_proof_on_contract` and the
+forgery rejection are unit-tested against an in-process EVM in `tests/test_web3.py`.
+Without web3, `ganache_db` logs in LOCAL mode and the rest is unaffected.
+
+If you change `contracts/EvoliaCore.sol`, regenerate the committed artifact (the
+CI/web3 path uses it directly, no solc): compile with solc 0.8.21
+(`--optimize --optimize-runs 200`) and write `{contractName, abi, bytecode (0x…),
+compiler}` to `contracts/EvoliaCore.json`.
 
 `evolia_actions.py` only ever appends events to `evolia_action_queue.jsonl`; the
 single state owner `evolia_run.py` drains that queue each cycle, so there is
@@ -149,10 +167,12 @@ Python `evolia_paths`, Go `mesh.Home`), so the services communicate through file
   Tightening applies only to headroom above trusted value, so an attack storm throttles new/forged
   baselines without ever rejecting an established peer's honest increment. With `EVOLIA_GENESIS_UNIX`
   unset the ceiling is `+Inf` (disabled; the per-increment PoW checks still apply) — set it fleet-wide
-  (same value on every node, like `EVOLIA_MESH_KEY`) to activate the bound. Residual latitude: a
-  key-holder can still pick any baseline *under* the physical ceiling on first contact; the structural
-  closure (verifiable history rather than a self-declared baseline) is on-chain PoW verification, the
-  planned next layer.
+  (same value on every node, like `EVOLIA_MESH_KEY`) to activate the bound. The mesh intake bounds a
+  peer's *self-declared baseline* to a physical limit; the **structural closure** is **on-chain PoW
+  verification** (`EvoliaCore.anchorProof`): the contract starts every node's `provenValue` at 0 and
+  only ever adds increments it recomputes from declared work that passes the rate caps, so the anchored
+  value is a verified sum from genesis rather than a self-declared baseline — no fabrication latitude on
+  the on-chain record.
 - Both intake paths store a peer block **keyed by device id** (`recv_<device>.json`) and overwrite
   on re-send — the UDP receiver (`mesh.StoreIncoming`) and the HTTP bridge (`bridge.StoreBlock`,
   via the shared `mesh.StorePeerBlock`) — so `TotalV` counts each peer once and never inflates

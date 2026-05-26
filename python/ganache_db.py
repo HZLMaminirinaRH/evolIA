@@ -6,6 +6,14 @@ Reads total_v from evolia_identity_state.json (written by the value model) and
 appends one entry per sync to evolia_blockchain_sync.log, which the dashboard
 and the bitcoin bridge consume.
 
+Anchoring prefers the **proven path**: when a cognitive work proof is present
+(evolia_work_proof.json) it calls EvoliaCore.anchorProof, which recomputes the
+value increment from the declared work on-chain (ΔV = base(actions)·(1+v)+floor·v)
+and enforces the physical rate caps — so the contract's provenValue is verified,
+not a self-declared number. A forged proof reverts. Falls back to the legacy
+self-declared anchorValue snapshot only when no proof is available (proofless
+bootstrap) or the deployed contract predates anchorProof.
+
 On-chain anchoring needs `web3`, a deployed contract (evolia_deployment.json)
 and a reachable Ganache node. When any of those is missing the sync still runs
 in LOCAL mode — it records the value with status "local" so the rest of the
@@ -23,6 +31,9 @@ from datetime import datetime, timezone
 import evolia_paths as paths
 
 GANACHE_URL = os.environ.get("GANACHE_URL", "http://127.0.0.1:8545")
+
+# Order matches EvoliaCore.anchorProof's count arguments and go/pow.ActionRates.
+ACTION_FIELDS = ("screen_input", "sms_sent", "photo_taken", "video_taken")
 
 try:
     from web3 import Web3
@@ -44,6 +55,37 @@ def read_total_v() -> float:
         return float(json.loads(path.read_text()).get("total_v", 0.0))
     except (OSError, ValueError):
         return 0.0
+
+
+def read_work_proof() -> dict | None:
+    """Return the latest cognitive proof {v_value, work{actions, v, dt, ...}} the
+    value model emitted, or None when absent/malformed. This is what lets the
+    chain recompute and verify the increment instead of trusting a bare number."""
+    path = paths.work_proof()
+    if not path.exists():
+        return None
+    try:
+        proof = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
+    if not isinstance(proof, dict) or not isinstance(proof.get("work"), dict):
+        return None
+    if not isinstance(proof["work"].get("actions"), dict):
+        return None
+    return proof
+
+
+def proof_to_args(work: dict) -> tuple:
+    """Scale a work proof to anchorProof's integer arguments, mirroring the
+    contract's fixed point: action counts (capped to the rate the contract
+    enforces is the chain's job, not ours), v as vMilli = v×1000 ∈ [0,1000], and
+    dt as whole seconds ∈ [1, 3600]. Returns
+    (screen, sms, photo, video, v_milli, dt_secs)."""
+    actions = work.get("actions") or {}
+    counts = [max(0, int(actions.get(k, 0))) for k in ACTION_FIELDS]
+    v_milli = max(0, min(1000, round(float(work.get("v", 0.0)) * 1000)))
+    dt_secs = max(1, min(3600, round(float(work.get("dt", 1.0)))))
+    return (*counts, v_milli, dt_secs)
 
 
 def build_log_entry(v_value: float, status: str, **extra) -> dict:
@@ -98,21 +140,93 @@ def anchor_on_contract(w3, contract, account, v_value, sensory_type="Physique+On
     )
 
 
+def anchor_proof_on_contract(w3, contract, account, work):
+    """Anchor a *proven* value increment: EvoliaCore.anchorProof recomputes ΔV
+    from the declared work and reverts a forged proof, so the on-chain provenValue
+    is verified rather than self-declared. Returns the log entry (value in BTC-e,
+    derived from the contract's provenValue, not from the caller)."""
+    screen, sms, photo, video, v_milli, dt_secs = proof_to_args(work)
+    tx_hash = contract.functions.anchorProof(screen, sms, photo, video, v_milli, dt_secs).transact(
+        {"from": account}
+    )
+    receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+    proven = contract.functions.provenValue().call()
+    return build_log_entry(
+        proven / 100.0,
+        "success",
+        mode="proven",
+        proven_value_centi=proven,
+        tx_hash=receipt["transactionHash"].hex(),
+        block=receipt["blockNumber"],
+    )
+
+
+def _supports_proof(contract) -> bool:
+    """True when the deployed contract exposes anchorProof (the verified path)."""
+    try:
+        return any(e.get("name") == "anchorProof" and e.get("type") == "function" for e in contract.abi)
+    except Exception:
+        return False
+
+
+def _anchor_marker_path():
+    return paths.evolia_home() / "evolia_anchor_marker.json"
+
+
+def _last_anchored_v() -> float:
+    """The proof v_value last anchored on-chain (0 if none), so a sync that finds
+    no new cycle does not re-anchor and double-count the same increment."""
+    p = _anchor_marker_path()
+    if not p.exists():
+        return 0.0
+    try:
+        return float(json.loads(p.read_text()).get("v_value", 0.0))
+    except (OSError, ValueError):
+        return 0.0
+
+
+def _mark_anchored(v_value: float) -> None:
+    paths.ensure_home()
+    paths.atomic_write_text(_anchor_marker_path(), json.dumps({"v_value": v_value}))
+
+
 def sync_once() -> dict:
-    """Anchor the current value once. Returns the log entry that was written."""
+    """Anchor the current value once. Returns the log entry that was written.
+
+    Prefers the proven path (anchorProof recomputes the increment on-chain); only
+    falls back to the legacy self-declared snapshot when no proof / no support."""
     v_value = read_total_v()
-    if v_value <= 0:
-        entry = build_log_entry(v_value, "local", note="no value to anchor")
-        log_sync(entry)
-        return entry
+    proof = read_work_proof()
 
     conn = _connect()
     if conn is None:
-        entry = build_log_entry(v_value, "local", note="web3/contract unavailable")
+        note = "no value to anchor" if v_value <= 0 and proof is None else "web3/contract unavailable"
+        entry = build_log_entry(v_value, "local", note=note)
         log_sync(entry)
         return entry
 
     w3, contract = conn
+
+    # Proven path: let the contract recompute and verify the increment.
+    if proof is not None and _supports_proof(contract):
+        proof_v = float(proof.get("v_value", 0.0))
+        if proof_v <= _last_anchored_v() + 1e-9:
+            entry = build_log_entry(v_value, "local", note="no new cycle proof to anchor")
+            log_sync(entry)
+            return entry
+        try:
+            entry = anchor_proof_on_contract(w3, contract, w3.eth.default_account, proof["work"])
+            _mark_anchored(proof_v)
+        except Exception as exc:  # pragma: no cover - network/contract path
+            entry = build_log_entry(v_value, "failed", error=str(exc))
+        log_sync(entry)
+        return entry
+
+    # Legacy fallback: self-declared snapshot (proofless bootstrap / old ABI).
+    if v_value <= 0:
+        entry = build_log_entry(v_value, "local", note="no value to anchor")
+        log_sync(entry)
+        return entry
     try:
         entry = anchor_on_contract(w3, contract, w3.eth.default_account, v_value)
     except Exception as exc:  # pragma: no cover - network path
