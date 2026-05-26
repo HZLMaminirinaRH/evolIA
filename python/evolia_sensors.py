@@ -65,7 +65,7 @@ def read_motion() -> tuple[float, float, float]:
     if not _have("termux-sensor"):
         return 0.0, 0.0, 0.0
 
-    data = _run_json(["termux-sensor", "-n", "1"]) or {}
+    data = _run_json(["termux-sensor", "-a", "-n", "1"]) or {}
     accel = gyro = magneto = 0.0
     for name, payload in data.items():
         if not isinstance(payload, dict):
