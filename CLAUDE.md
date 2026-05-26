@@ -273,15 +273,33 @@ to local Ganache (default `http://127.0.0.1:8545`). **Never use Ethereum mainnet
   - Public (rate-limited): `https://ethereum-sepolia-rpc.publicnode.com`
   - Alchemy: `https://eth-sepolia.g.alchemy.com/v2/{API_KEY}` (free tier available)
   - Infura: `https://sepolia.infura.io/v3/{PROJECT_ID}`
+- Set `EVOLIA_PRIVATE_KEY` to the 0x-prefixed key of a funded account. A public
+  RPC holds **no accounts and will not sign for you**, so transactions are signed
+  **client-side** from this key. Without it, `ganache_db`/`evolia_deploy` stay in
+  LOCAL mode (there is nothing to sign with). NEVER commit this key — pass it via
+  the environment only (it is owner-secret, like `EVOLIA_MESH_KEY`).
 - Get free testnet ETH from a faucet: https://sepoliafaucet.com (Alchemy) or others
 - Deploy contract once: `python3 evolia_deploy.py` (idempotent; checks `evolia_deployment.json`)
 - Run anchor service: `python3 ganache_db.py continuous [interval]`
 
+Example:
+```bash
+export SEPOLIA_RPC_URL="https://ethereum-sepolia-rpc.publicnode.com"
+export EVOLIA_PRIVATE_KEY="0x<funded-test-account-key>"
+python3 evolia_deploy.py            # deploy once (idempotent)
+python3 ganache_db.py continuous 30 # anchor each cycle's proof
+```
+
 **For local Ganache (dev):**
 - Install Ganache: `npm install -g ganache`
 - Run: `ganache --host 127.0.0.1 --port 8545` (or `ganache-cli`)
-- `ganache_db.py continuous` will auto-detect and anchor to it
+- `ganache_db.py continuous` will auto-detect and anchor to it — Ganache holds
+  unlocked accounts, so no `EVOLIA_PRIVATE_KEY` is needed
 - Infinite faucet; instant finality
+
+**Diagnosing LOCAL mode:** `python3 ganache_db.py diagnose` reports each
+prerequisite (web3 installed, node reachable, chain id, contract deployed, signer
++ balance) so a LOCAL fallback is explainable rather than silent.
 
 **Notes:**
 - `evolia_deployment.json` stores the deployed contract address (per chain/account)

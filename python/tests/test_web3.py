@@ -108,6 +108,37 @@ def test_anchor_proof_recomputes_and_rejects_forgery():
     assert contract.functions.provenValue().call() == 450
 
 
+def test_anchor_proof_signs_client_side_with_private_key():
+    # The Sepolia model: a public RPC holds no keys, so the tx is signed locally
+    # from a funded externally-owned account and broadcast raw. We mimic that here
+    # with an account whose key we hold (the node does not manage it).
+    if not HAVE_WEB3:
+        print("   (SKIP: web3/eth-tester not installed)")
+        return
+
+    from eth_account import Account
+
+    w3 = Web3(EthereumTesterProvider())
+    funder = w3.eth.accounts[0]
+    art = _artifact()
+    deployer = w3.eth.contract(abi=art["abi"], bytecode=art["bytecode"])
+    receipt = w3.eth.wait_for_transaction_receipt(deployer.constructor().transact({"from": funder}))
+    contract = w3.eth.contract(address=receipt["contractAddress"], abi=art["abi"])
+
+    acct = Account.create()
+    w3.eth.send_transaction({"from": funder, "to": acct.address, "value": w3.to_wei(1, "ether")})
+
+    # screen_input×40 at v=0 -> 40·0.05 = 2.0 BTC-e = 200 centi, signed client-side.
+    entry = ganache_db.anchor_proof_on_contract(
+        w3, contract, acct.address,
+        {"actions": {"screen_input": 40}, "v": 0.0, "dt": 5.0},
+        private_key=acct.key.hex(),
+    )
+    assert entry["status"] == "success" and entry["mode"] == "proven"
+    assert contract.functions.provenValue().call() == 200
+    assert contract.functions.provenBlockCount().call() == 1
+
+
 def test_proof_queue_drains_to_chain_full_fidelity():
     if not HAVE_WEB3:
         print("   (SKIP: web3/eth-tester not installed)")

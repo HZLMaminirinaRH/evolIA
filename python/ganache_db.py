@@ -23,6 +23,11 @@ clearly reports that nothing was written on-chain.
 Configuration:
 - SEPOLIA_RPC_URL: Sepolia testnet RPC endpoint (preferred)
 - GANACHE_URL: Local Ganache endpoint (fallback; default http://127.0.0.1:8545)
+- EVOLIA_PRIVATE_KEY: 0x-prefixed key of a funded account, used to sign
+  client-side when the RPC holds no accounts (Sepolia / any remote node).
+  Unset on local Ganache, whose accounts are already unlocked.
+
+Run `python3 ganache_db.py diagnose` to see why anchoring is LOCAL.
 """
 
 from __future__ import annotations
@@ -39,6 +44,17 @@ import evolia_paths as paths
 SEPOLIA_RPC = os.environ.get("SEPOLIA_RPC_URL", "")
 GANACHE_URL = os.environ.get("GANACHE_URL", "http://127.0.0.1:8545")
 RPC_URL = SEPOLIA_RPC if SEPOLIA_RPC else GANACHE_URL
+
+
+def _private_key() -> str:
+    """The hex private key to sign with, when the node does not hold keys.
+
+    A public Sepolia RPC (Publicnode/Alchemy/Infura) keeps no accounts — it will
+    not sign for you — so transactions must be signed client-side from a funded
+    account. Set EVOLIA_PRIVATE_KEY (0x-prefixed) to enable that path. Left unset,
+    we use the node's own unlocked accounts (Ganache / in-process eth-tester)."""
+    return os.environ.get("EVOLIA_PRIVATE_KEY", "").strip()
+
 
 # Order matches EvoliaCore.anchorProof's count arguments and go/pow.ActionRates.
 ACTION_FIELDS = ("screen_input", "sms_sent", "photo_taken", "video_taken")
@@ -92,8 +108,43 @@ def log_sync(entry: dict) -> None:
         f.write(json.dumps(entry) + "\n")
 
 
+def _account(w3):
+    """Resolve (address, private_key|None) for signing. With EVOLIA_PRIVATE_KEY
+    set we derive the address from the key and sign client-side (Sepolia / any
+    remote RPC); otherwise we use the node's first unlocked account (Ganache /
+    eth-tester) and let the node sign."""
+    pk = _private_key()
+    if pk:
+        return w3.eth.account.from_key(pk).address, pk
+    return w3.eth.accounts[0], None
+
+
+def _send(w3, fn, account, private_key):
+    """Send a contract call, signing client-side when a private key is given
+    (remote RPC) or via the node's unlocked account otherwise. Returns the
+    receipt. Raises on revert/infrastructure error so callers can classify it."""
+    if private_key:
+        tx = fn.build_transaction({
+            "from": account,
+            "nonce": w3.eth.get_transaction_count(account),
+        })
+        signed = w3.eth.account.sign_transaction(tx, private_key)
+        raw = getattr(signed, "raw_transaction", None)
+        if raw is None:  # web3.py < 6 spelled it rawTransaction
+            raw = signed.rawTransaction
+        tx_hash = w3.eth.send_raw_transaction(raw)
+    else:
+        tx_hash = fn.transact({"from": account})
+    return w3.eth.wait_for_transaction_receipt(tx_hash)
+
+
 def _connect():
-    """Return (web3, contract) if a real on-chain anchor is possible, else None."""
+    """Return (web3, contract) if a real on-chain anchor is possible, else None.
+
+    Requires web3, a deployed contract record + ABI, and a reachable node. A
+    signer must also be available: either EVOLIA_PRIVATE_KEY (remote RPC such as
+    Sepolia) or a node-held account (Ganache). A public RPC holds no accounts, so
+    without a private key there is nothing to sign with and we stay LOCAL."""
     if not HAS_WEB3:
         return None
     if not (paths.deployment().exists() and paths.contract_abi().exists()):
@@ -102,26 +153,25 @@ def _connect():
         w3 = Web3(Web3.HTTPProvider(RPC_URL))
         if not w3.is_connected():
             return None
+        if not _private_key() and not w3.eth.accounts:
+            return None  # remote RPC with no key and no node account: cannot sign
         address = json.loads(paths.deployment().read_text())["contract_address"]
         abi = json.loads(paths.contract_abi().read_text())
         contract = w3.eth.contract(address=Web3.to_checksum_address(address), abi=abi)
-        w3.eth.default_account = w3.eth.accounts[0]
         return w3, contract
     except Exception:
         return None
 
 
-def anchor_on_contract(w3, contract, account, v_value, sensory_type="Physique+Ondes"):
+def anchor_on_contract(w3, contract, account, v_value, sensory_type="Physique+Ondes", private_key=None):
     """Anchor v_value on-chain via EvoliaCore.anchorValue; returns the log entry.
 
     The value is scaled to an integer (x100) since the contract stores uints.
     Pulled out as its own function so the real on-chain path is unit-testable
     against an in-process EVM (see tests/test_web3.py).
     """
-    tx_hash = contract.functions.anchorValue(int(v_value * 100), sensory_type).transact(
-        {"from": account}
-    )
-    receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+    fn = contract.functions.anchorValue(int(v_value * 100), sensory_type)
+    receipt = _send(w3, fn, account, private_key)
     return build_log_entry(
         v_value,
         "success",
@@ -130,16 +180,14 @@ def anchor_on_contract(w3, contract, account, v_value, sensory_type="Physique+On
     )
 
 
-def anchor_proof_on_contract(w3, contract, account, work):
+def anchor_proof_on_contract(w3, contract, account, work, private_key=None):
     """Anchor a *proven* value increment: EvoliaCore.anchorProof recomputes ΔV
     from the declared work and reverts a forged proof, so the on-chain provenValue
     is verified rather than self-declared. Returns the log entry (value in BTC-e,
     derived from the contract's provenValue, not from the caller)."""
     screen, sms, photo, video, v_milli, dt_secs = proof_to_args(work)
-    tx_hash = contract.functions.anchorProof(screen, sms, photo, video, v_milli, dt_secs).transact(
-        {"from": account}
-    )
-    receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+    fn = contract.functions.anchorProof(screen, sms, photo, video, v_milli, dt_secs)
+    receipt = _send(w3, fn, account, private_key)
     proven = contract.functions.provenValue().call()
     return build_log_entry(
         proven / 100.0,
@@ -210,7 +258,7 @@ def _is_revert(exc: Exception) -> bool:
     return any(s in type(exc).__name__ for s in ("ContractLogic", "Revert", "TransactionFailed"))
 
 
-def anchor_proof_batch(w3, contract, account, proofs):
+def anchor_proof_batch(w3, contract, account, proofs, private_key=None):
     """Anchor each queued proof in order. Returns (anchored, dropped, unanchored):
     a reverting proof is dropped (logged), the first infrastructure failure stops
     the batch and returns the unanchored remainder for retry."""
@@ -218,7 +266,7 @@ def anchor_proof_batch(w3, contract, account, proofs):
     dropped = 0
     for i, p in enumerate(proofs):
         try:
-            anchor_proof_on_contract(w3, contract, account, p["work"])
+            anchor_proof_on_contract(w3, contract, account, p["work"], private_key=private_key)
             anchored += 1
         except Exception as exc:  # noqa: BLE001 - classified by _is_revert
             if _is_revert(exc):
@@ -253,7 +301,8 @@ def sync_once() -> dict:
             entry = _legacy_anchor(w3, contract, v_value)
             log_sync(entry)
             return entry
-        anchored, dropped, unanchored = anchor_proof_batch(w3, contract, w3.eth.default_account, batch)
+        account, pk = _account(w3)
+        anchored, dropped, unanchored = anchor_proof_batch(w3, contract, account, batch, private_key=pk)
         requeue_proofs(unanchored)
         proven = contract.functions.provenValue().call()
         status = "success" if not unanchored else ("partial" if anchored else "failed")
@@ -289,14 +338,55 @@ def _legacy_anchor(w3, contract, v_value) -> dict:
     if v_value <= 0:
         return build_log_entry(v_value, "local", note="no value to anchor")
     try:
-        return anchor_on_contract(w3, contract, w3.eth.default_account, v_value)
+        account, pk = _account(w3)
+        return anchor_on_contract(w3, contract, account, v_value, private_key=pk)
     except Exception as exc:  # pragma: no cover - network path
         return build_log_entry(v_value, "failed", error=str(exc))
 
 
+def diagnose() -> dict:
+    """Report each on-chain prerequisite so a LOCAL fallback is explainable
+    (web3 absent, contract not deployed, node unreachable, or no signer)."""
+    d = {
+        "web3_installed": HAS_WEB3,
+        "rpc_url": RPC_URL,
+        "target": "sepolia" if SEPOLIA_RPC else "ganache/local",
+        "deployment_record": paths.deployment().exists(),
+        "abi_file": paths.contract_abi().exists(),
+        "private_key_set": bool(_private_key()),
+    }
+    if not HAS_WEB3:
+        d["hint"] = "pip install -r requirements-web3.txt"
+        return d
+    try:
+        w3 = Web3(Web3.HTTPProvider(RPC_URL))
+        d["node_reachable"] = w3.is_connected()
+        if d["node_reachable"]:
+            d["chain_id"] = w3.eth.chain_id
+            if _private_key():
+                acct = w3.eth.account.from_key(_private_key())
+                d["signer"] = acct.address
+                d["balance_eth"] = float(w3.from_wei(w3.eth.get_balance(acct.address), "ether"))
+                if d["balance_eth"] == 0:
+                    d["hint"] = "signer has 0 ETH — fund it at https://sepoliafaucet.com"
+            else:
+                d["node_accounts"] = len(w3.eth.accounts)
+                if not w3.eth.accounts:
+                    d["hint"] = "remote RPC holds no accounts — set EVOLIA_PRIVATE_KEY"
+        else:
+            d["hint"] = f"cannot reach {RPC_URL}"
+    except Exception as exc:  # noqa: BLE001
+        d["node_error"] = str(exc)
+    if not d.get("deployment_record"):
+        d["hint"] = "contract not deployed — run python3 evolia_deploy.py"
+    return d
+
+
 def sync_continuous(interval: int = 30) -> None:
-    mode = "ON-CHAIN" if _connect() else "LOCAL (no web3/contract/node)"
+    mode = "ON-CHAIN" if _connect() else "LOCAL (no web3/contract/node/signer)"
     print(f"[ganache_db] sync continuous (interval={interval}s, mode={mode})", flush=True)
+    if "LOCAL" in mode:
+        print(f"[ganache_db] diagnose: {json.dumps(diagnose())}", flush=True)
     try:
         while True:
             entry = sync_once()
@@ -311,5 +401,7 @@ if __name__ == "__main__":
     interval = int(sys.argv[2]) if len(sys.argv) > 2 else 30
     if mode == "once":
         print(json.dumps(sync_once(), indent=2))
+    elif mode == "diagnose":
+        print(json.dumps(diagnose(), indent=2))
     else:
         sync_continuous(interval)

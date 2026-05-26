@@ -12,7 +12,13 @@ ABI under EVOLIA_HOME exactly where ganache_db expects them:
 Idempotent: if a live contract is already recorded, it is reused. Requires the
 `web3` package (install via requirements-web3.txt); errors clearly otherwise.
 
-Usage:  python3 evolia_deploy.py            # uses GANACHE_URL or 127.0.0.1:8545
+On a remote RPC (Sepolia) the node holds no keys, so transactions are signed
+client-side from EVOLIA_PRIVATE_KEY (a funded account). On local Ganache, the
+node's first unlocked account is used.
+
+Usage:  python3 evolia_deploy.py
+  SEPOLIA_RPC_URL=...  EVOLIA_PRIVATE_KEY=0x...   # Sepolia testnet
+  GANACHE_URL=...                                 # local dev (default 127.0.0.1:8545)
 """
 
 from __future__ import annotations
@@ -25,7 +31,10 @@ from pathlib import Path
 
 import evolia_paths as paths
 
+# Prefer Sepolia testnet if configured; fall back to local Ganache. Never mainnet.
+SEPOLIA_RPC = os.environ.get("SEPOLIA_RPC_URL", "")
 GANACHE_URL = os.environ.get("GANACHE_URL", "http://127.0.0.1:8545")
+RPC_URL = SEPOLIA_RPC if SEPOLIA_RPC else GANACHE_URL
 
 
 def find_artifact() -> Path:
@@ -40,7 +49,7 @@ def find_artifact() -> Path:
     raise FileNotFoundError("EvoliaCore.json artifact not found (looked in EVOLIA_HOME and contracts/)")
 
 
-def deploy(rpc: str = GANACHE_URL, connect_retries: int = 10) -> str:
+def deploy(rpc: str = RPC_URL, connect_retries: int = 10) -> str:
     from web3 import Web3  # imported lazily so the module loads without web3
 
     artifact = json.loads(find_artifact().read_text())
@@ -64,10 +73,26 @@ def deploy(rpc: str = GANACHE_URL, connect_retries: int = 10) -> str:
         except Exception:
             pass
 
-    account = w3.eth.accounts[0]
-    w3.eth.default_account = account
     contract = w3.eth.contract(abi=artifact["abi"], bytecode=artifact["bytecode"])
-    tx_hash = contract.constructor().transact({"from": account})
+
+    # A public RPC (Sepolia) holds no keys: sign client-side from a funded account
+    # (EVOLIA_PRIVATE_KEY). Without a key, use the node's unlocked account (Ganache).
+    pk = os.environ.get("EVOLIA_PRIVATE_KEY", "").strip()
+    if pk:
+        account = w3.eth.account.from_key(pk).address
+        tx = contract.constructor().build_transaction({
+            "from": account,
+            "nonce": w3.eth.get_transaction_count(account),
+        })
+        signed = w3.eth.account.sign_transaction(tx, pk)
+        raw = getattr(signed, "raw_transaction", None)
+        if raw is None:  # web3.py < 6
+            raw = signed.rawTransaction
+        tx_hash = w3.eth.send_raw_transaction(raw)
+    else:
+        account = w3.eth.accounts[0]
+        w3.eth.default_account = account
+        tx_hash = contract.constructor().transact({"from": account})
     receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
     address = receipt["contractAddress"]
 
