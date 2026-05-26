@@ -1,0 +1,5 @@
+First public release.
+
+* Self-contained Kotlin Android app with the cognitive value engine.
+* Linear-acceleration motion signal and RSSI-filtered WiFi/BLE proximity.
+* Foreground service with on-device value accumulation.
