@@ -40,6 +40,8 @@ echo "==> [4/5] Build Go services"
 echo "==> [5/5] Install Python services into $EVOLIA_HOME"
 mkdir -p "$EVOLIA_HOME"
 cp "$REPO"/python/*.py "$EVOLIA_HOME/"
+# Ship requirements so `pip install -r requirements-web3.txt` works from here.
+cp "$REPO"/python/requirements*.txt "$EVOLIA_HOME/" 2>/dev/null || true
 # Ship the prebuilt contract artifact too (used by evolia_deploy in web3 mode).
 cp "$REPO/contracts/EvoliaCore.json" "$EVOLIA_HOME/" 2>/dev/null || true
 
