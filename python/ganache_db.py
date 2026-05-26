@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Anchor the accumulated value onto the Ganache blockchain.
+"""Anchor the accumulated value onto the Ethereum blockchain.
 
 Reads total_v from evolia_identity_state.json (written by the value model) and
 appends one entry per sync to evolia_blockchain_sync.log, which the dashboard
@@ -15,9 +15,14 @@ self-declared anchorValue snapshot only when no proof is available (proofless
 bootstrap) or the deployed contract predates anchorProof.
 
 On-chain anchoring needs `web3`, a deployed contract (evolia_deployment.json)
-and a reachable Ganache node. When any of those is missing the sync still runs
-in LOCAL mode — it records the value with status "local" so the rest of the
-pipeline keeps flowing — and clearly reports that nothing was written on-chain.
+and a reachable Ethereum node (Sepolia testnet by default, or local Ganache for
+dev). When any of those is missing the sync still runs in LOCAL mode — it records
+the value with status "local" so the rest of the pipeline keeps flowing — and
+clearly reports that nothing was written on-chain.
+
+Configuration:
+- SEPOLIA_RPC_URL: Sepolia testnet RPC endpoint (preferred)
+- GANACHE_URL: Local Ganache endpoint (fallback; default http://127.0.0.1:8545)
 """
 
 from __future__ import annotations
@@ -30,7 +35,10 @@ from datetime import datetime, timezone
 
 import evolia_paths as paths
 
+# Prefer Sepolia testnet (chainid 11155111); fall back to local Ganache
+SEPOLIA_RPC = os.environ.get("SEPOLIA_RPC_URL", "")
 GANACHE_URL = os.environ.get("GANACHE_URL", "http://127.0.0.1:8545")
+RPC_URL = SEPOLIA_RPC if SEPOLIA_RPC else GANACHE_URL
 
 # Order matches EvoliaCore.anchorProof's count arguments and go/pow.ActionRates.
 ACTION_FIELDS = ("screen_input", "sms_sent", "photo_taken", "video_taken")
@@ -91,7 +99,7 @@ def _connect():
     if not (paths.deployment().exists() and paths.contract_abi().exists()):
         return None
     try:
-        w3 = Web3(Web3.HTTPProvider(GANACHE_URL))
+        w3 = Web3(Web3.HTTPProvider(RPC_URL))
         if not w3.is_connected():
             return None
         address = json.loads(paths.deployment().read_text())["contract_address"]

@@ -262,6 +262,33 @@ LOCAL mode when those are absent. Run from the `python/` directory:
 - Deps: `pip install -r requirements.txt` (none for the value model);
   `pip install -r requirements-web3.txt` for real on-chain anchoring.
 
+### On-chain anchoring: Sepolia testnet vs. local Ganache
+
+`ganache_db.py` anchors value proofs on-chain via `EvoliaCore.anchorProof`. By default
+it prefers **Sepolia testnet** (chainid 11155111) if configured, otherwise falls back
+to local Ganache (default `http://127.0.0.1:8545`). **Never use Ethereum mainnet.**
+
+**For Sepolia:**
+- Set `SEPOLIA_RPC_URL` env var to a public or private RPC endpoint:
+  - Public (rate-limited): `https://ethereum-sepolia-rpc.publicnode.com`
+  - Alchemy: `https://eth-sepolia.g.alchemy.com/v2/{API_KEY}` (free tier available)
+  - Infura: `https://sepolia.infura.io/v3/{PROJECT_ID}`
+- Get free testnet ETH from a faucet: https://sepoliafaucet.com (Alchemy) or others
+- Deploy contract once: `python3 evolia_deploy.py` (idempotent; checks `evolia_deployment.json`)
+- Run anchor service: `python3 ganache_db.py continuous [interval]`
+
+**For local Ganache (dev):**
+- Install Ganache: `npm install -g ganache`
+- Run: `ganache --host 127.0.0.1 --port 8545` (or `ganache-cli`)
+- `ganache_db.py continuous` will auto-detect and anchor to it
+- Infinite faucet; instant finality
+
+**Notes:**
+- `evolia_deployment.json` stores the deployed contract address (per chain/account)
+- The contract is deployed fresh if absent (gas cost ~80k–100k centi-BTC-e on Sepolia)
+- Proofs are queued in `evolia_proof_queue.jsonl` and drained on each sync
+- If the node is unreachable or out of gas, proofs are re-queued (never lost)
+
 ## When more code lands, update this file
 
 Keep entries grounded in what is actually in the repo; verify by reading files rather than
