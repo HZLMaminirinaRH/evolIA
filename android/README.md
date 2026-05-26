@@ -32,20 +32,40 @@ shared state.
 
 ## Build
 
-1. Cross-compile the Go binaries into `app/src/main/jniLibs/arm64-v8a/` (needs the NDK):
-   ```sh
-   export ANDROID_NDK_HOME=/path/to/android-ndk
-   bash ../scripts/build-android-binaries.sh
-   ```
-2. Open `android/` in Android Studio (Giraffe+), let it generate the Gradle
-   wrapper, then Run on an arm64 device — or from the CLI once the wrapper exists:
-   ```sh
-   ./gradlew :app:assembleDebug
-   ```
-3. Install the APK, grant the notification permission, tap **Démarrer Evolia**.
+The Gradle wrapper is committed (`./gradlew`, pinned to Gradle 8.7 — the version
+AGP 8.5.2 is tested against), so the app builds straight from the command line
+with a JDK 17 + the Android SDK, **no Android Studio required**:
 
-To check on-device behaviour (sensors, capture, on-chain anchoring, the auth
-gate) that CI cannot, follow the step-by-step [device validation guide](VALIDATION.md).
+```sh
+cd android
+./gradlew :app:assembleDebug         # debug APK
+./gradlew :app:testDebugUnitTest     # pure value-core unit tests (JVM)
+```
+
+The supervised Go binaries are **optional**. Left out, `app/src/main/jniLibs/`
+stays empty and the app runs the pure-Kotlin value engine standalone (Phase 2) —
+this is also how F-Droid builds it: from source only, with no prebuilt blobs. To
+bundle them for the full mesh, cross-compile into `app/src/main/jniLibs/arm64-v8a/`
+first (needs the NDK):
+
+```sh
+export ANDROID_NDK_HOME=/path/to/android-ndk
+bash ../scripts/build-android-binaries.sh
+```
+
+Then install the APK, grant the notification permission, and tap **Démarrer
+Evolia**. To exercise on-device behaviour (sensors, capture, on-chain anchoring,
+the auth gate) that CI cannot, follow the step-by-step
+[device validation guide](VALIDATION.md).
+
+## Packaging for F-Droid
+
+The repo is F-Droid-ready: an MIT [`LICENSE`](../LICENSE), all-FOSS dependencies,
+no prebuilt binaries committed, and a committed Gradle wrapper. The store listing
+lives under [`fastlane/metadata/android/`](fastlane/metadata/android/) (title,
+descriptions and changelogs, `en-US` + `fr-FR`); add screenshots under
+`<locale>/images/phoneScreenshots/`. Bump `versionCode` in `app/build.gradle.kts`
+for every release so F-Droid detects the update.
 
 ## Roadmap
 
