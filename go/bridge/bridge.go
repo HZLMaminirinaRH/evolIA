@@ -109,7 +109,8 @@ func checkWork(vault, device string, newV float64, work *pow.WorkProof, key []by
 		return false
 	}
 	if work != nil {
-		if err := pow.ValidateBlock(mesh.StoredV(vault, device), newV, *work); err != nil {
+		storedV := mesh.StoredV(vault, device)
+		if err := pow.ValidateBlock(storedV, newV, *work, mesh.AdmissibleCeiling(storedV, def.Level())); err != nil {
 			if errors.Is(err, pow.ErrStale) {
 				writeJSON(w, http.StatusOK, map[string]any{"status": "stale"})
 				return false

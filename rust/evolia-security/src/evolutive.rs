@@ -14,6 +14,12 @@
 //! core: `A_global = A_evo + P_free − D_evo` (attack evolution + passive
 //! propagation − evolutive defense). Defense subtracts, so as it grows the net
 //! intensity falls — evolIA "wins" the more it is attacked.
+//!
+//! The same `D_evo` counterweight also governs the **proof-of-work value
+//! ceiling**: `ceiling_factor` tightens how much value a peer may assert as the
+//! absorbed-defense level rises (`ForgedWork` feeds that level), so fabricating
+//! value is fought by the very pressure it creates. This is the formal spec of
+//! the Go `defense::CeilingFactor`, applied by the `pow` validator on intake.
 
 use std::collections::VecDeque;
 
@@ -170,6 +176,13 @@ impl AdaptiveDefense {
         self.buffer.pop_front();
     }
 
+    /// The evolutive value-ceiling multiplier from the current level — see
+    /// [`ceiling_factor`]. The more attacks evolIA has absorbed, the lower it is
+    /// (the stricter the mesh is about what value a peer may claim).
+    pub fn ceiling_factor(&self) -> f64 {
+        ceiling_factor(self.level())
+    }
+
     pub fn len(&self) -> usize {
         self.buffer.len()
     }
@@ -177,6 +190,32 @@ impl AdaptiveDefense {
     pub fn is_empty(&self) -> bool {
         self.buffer.is_empty()
     }
+}
+
+/// Defense level at which the evolutive throttle reaches its floor — mirrors the
+/// Go defense's `pressureSaturation`. Beyond it there is no further tightening.
+pub const PRESSURE_SATURATION: f64 = 10.0;
+
+/// Fraction of the proof-of-work growth headroom still admitted at full defense
+/// pressure (mirrors the Go Gate's floor): even saturated, evolIA keeps a floor
+/// so an honest peer's small bounded increment can still land.
+pub const CEILING_FLOOR_FRAC: f64 = 0.25;
+
+/// Map an absorbed-defense level to a 0..1 throttle pressure: 0 when calm, 1 once
+/// the level saturates. Continuous, so the coupling cannot flap.
+pub fn pressure(level: f64) -> f64 {
+    (level / PRESSURE_SATURATION).clamp(0.0, 1.0)
+}
+
+/// The PoW arm of the evolutive coupling: the absorbed-defense `level` tightens
+/// the admissible value ceiling, exactly as it tightens the admission gate.
+/// Returns the multiplier the value validator applies to a claim's growth
+/// headroom, in `[CEILING_FLOOR_FRAC, 1]`. Fabricating value (`ForgedWork`)
+/// raises the level, which lowers this factor — so the more forged-work pressure
+/// evolIA absorbs, the less value any block may assert. `D_evo` subtracts in
+/// `a_global`; here it subtracts from what value the mesh will admit.
+pub fn ceiling_factor(level: f64) -> f64 {
+    1.0 - pressure(level) * (1.0 - CEILING_FLOOR_FRAC)
 }
 
 impl Default for AdaptiveDefense {
@@ -282,6 +321,27 @@ mod tests {
         d.record(AttackKind::BadSignature);
         d.record(AttackKind::Unauthorized);
         assert_eq!(d.len(), 3);
+    }
+
+    #[test]
+    fn ceiling_factor_tightens_with_absorbed_attacks() {
+        // Calm admits the full physical ceiling (factor 1); absorbing forged-work
+        // lowers it monotonically toward the floor, where it then holds.
+        assert_eq!(ceiling_factor(0.0), 1.0);
+        let mut d = AdaptiveDefense::new(64);
+        let calm = d.ceiling_factor();
+        for _ in 0..12 {
+            d.record(AttackKind::ForgedWork);
+        }
+        let hot = d.ceiling_factor();
+        assert!(
+            hot < calm,
+            "absorbing forged-work must tighten the value ceiling"
+        );
+        assert!(
+            (hot - CEILING_FLOOR_FRAC).abs() < 1e-9,
+            "a saturated defense must hold the ceiling at the floor"
+        );
     }
 
     #[test]

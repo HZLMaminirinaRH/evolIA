@@ -150,7 +150,7 @@ func listenBlocks(vault string, seen map[string]bool, mu *sync.Mutex, key []byte
 			continue
 		}
 		mu.Lock()
-		name, params, storeErr := mesh.StoreIncoming(vault, buf[:n], key)
+		name, params, storeErr := mesh.StoreIncoming(vault, buf[:n], key, def)
 		if storeErr == nil {
 			seen[name] = true
 		}

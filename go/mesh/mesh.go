@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -121,7 +122,7 @@ func TotalV(vault string) float64 {
 // re-propagating a received block) and any cognitive params carried, or a
 // classified error (ErrMalformed / ErrInjection / ErrBadSignature) the defense
 // layer scores.
-func StoreIncoming(vault string, data []byte, key []byte) (string, map[string]float64, error) {
+func StoreIncoming(vault string, data []byte, key []byte, def *defense.AdaptiveDefense) (string, map[string]float64, error) {
 	var b Block
 	if err := json.Unmarshal(data, &b); err != nil {
 		return "", nil, ErrMalformed
@@ -142,7 +143,12 @@ func StoreIncoming(vault string, data []byte, key []byte) (string, map[string]fl
 		}
 	}
 	if b.Work != nil {
-		if err := pow.ValidateBlock(StoredV(vault, b.Device), b.VValue, *b.Work); err != nil {
+		storedV := StoredV(vault, b.Device)
+		level := 0.0
+		if def != nil {
+			level = def.Level()
+		}
+		if err := pow.ValidateBlock(storedV, b.VValue, *b.Work, AdmissibleCeiling(storedV, level)); err != nil {
 			return "", nil, err // ErrStale (skip) or ErrForgedWork (attack)
 		}
 	}
@@ -151,6 +157,33 @@ func StoreIncoming(vault string, data []byte, key []byte) (string, map[string]fl
 		return "", nil, err
 	}
 	return name, b.Params, nil
+}
+
+// AdmissibleCeiling is the highest value a peer's claim may assert right now,
+// given what we already trust for it (storedV) and the current absorbed-defense
+// level. It composes the two security layers:
+//
+//   - the physical wall-clock ceiling (pow.ValueCeiling) anchored at the fleet
+//     genesis (EVOLIA_GENESIS_UNIX) — bounds even a trust-on-first-use baseline;
+//   - the evolutive defense factor (defense.CeilingFactor) — under forged-work
+//     pressure it shrinks the growth headroom above storedV toward a floor, the
+//     PoW arm of a_global's D_evo counterweight.
+//
+// Tightening applies to the headroom above storedV, never to value we already
+// hold, so an attack storm throttles new/forged baselines without ever rejecting
+// an established peer's honest increment. With no genesis configured the physical
+// ceiling is +Inf, disabling the bound (the per-increment PoW checks still apply).
+func AdmissibleCeiling(storedV, defenseLevel float64) float64 {
+	g := paths.GenesisUnix()
+	if g <= 0 {
+		return math.Inf(1)
+	}
+	physical := pow.ValueCeiling(float64(time.Now().Unix() - g))
+	headroom := physical - storedV
+	if headroom < 0 {
+		headroom = 0
+	}
+	return storedV + headroom*defense.CeilingFactor(defenseLevel)
 }
 
 // StoredV returns the value we currently hold for a device (0 if none), so the

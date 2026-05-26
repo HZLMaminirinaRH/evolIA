@@ -142,6 +142,25 @@ func Pressure(level float64) float64 {
 	return p
 }
 
+// ceilingFloorFrac is the fraction of the proof-of-work growth headroom still
+// admitted at full defense pressure: even saturated, evolIA keeps a floor so an
+// honest peer's small bounded increment can still land. Mirrors the Gate's
+// admitFloor* — the throttle never shuts fully.
+const ceilingFloorFrac = 0.25
+
+// CeilingFactor is the PoW arm of the evolutive coupling. It maps the absorbed-
+// defense level to a [ceilingFloorFrac, 1] multiplier the value validator applies
+// to a claim's growth headroom: calm (level 0) admits the full physical ceiling;
+// as the buffer fills with absorbed attacks (ForgedWork included) the admissible
+// value envelope contracts toward the floor, so the more forged-work pressure the
+// fleet absorbs the less value any block may assert. The same D_evo counterweight
+// that shrinks the admission Gate now also tightens what value a block may claim,
+// and it breathes back to 1 as the buffer decays. This is the operational form of
+// evolia-security::evolutive::ceiling_factor.
+func CeilingFactor(level float64) float64 {
+	return 1 - Pressure(level)*(1-ceilingFloorFrac)
+}
+
 // Gate is a per-source admission throttle whose burst and refill shrink as the
 // absorbed defense rises, so a sustained flood is squeezed toward a guaranteed
 // floor while a slow legitimate peer still passes. Throttling is pure

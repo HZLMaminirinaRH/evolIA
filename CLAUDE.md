@@ -32,7 +32,9 @@ go/                      Go module `evolia` — networking
   defense/               adaptive defense (Go mirror of evolia-security::evolutive): bounded
                          attack buffer + injection detector + NetIntensity coupling + intake Gate
   pow/                   cognitive proof-of-work validator: a value increment must equal
-                         base(actions)x(1+v)+floor*v with actions within physical rate caps
+                         base(actions)x(1+v)+floor*v with actions within physical rate caps,
+                         and the total stays under a wall-clock value ceiling (MaxGainPerSec x
+                         elapsed-since-genesis) that bounds even a first-contact baseline
   mesh/                  block detection + propagation + receive (StoreIncoming, PoW-validated) +
                          HMAC sign/verify (SignBlock/VerifyBlock) + LoadPeers + TotalV
   netdisc/               peer-discovery registry + announce parsing (testable)
@@ -132,8 +134,25 @@ Python `evolia_paths`, Go `mesh.Home`), so the services communicate through file
   or non-reconciling block is rejected as `ForgedWork` and feeds the adaptive defense. Each block
   is self-contained (carries its own declared prior `v_prev`) so validation survives a dropped UDP
   datagram, while the store path enforces **monotonicity** (value never rolls back; a non-advancing
-  claim is silently dropped as stale). v1 boundary: a key-holder can still set its *baseline* by
-  lying about `v_prev` on first contact (trust-on-first-use); every later increment is bounded.
+  claim is silently dropped as stale).
+- The proof-of-work is **woven into the evolutive defense**, not a static check. On intake the
+  receiver bounds a claim by an **admissible value ceiling** (`mesh.AdmissibleCeiling`) that composes
+  two layers: (1) a **physical wall-clock ceiling** — the most value the fleet could have earned
+  since its genesis (`pow.ValueCeiling = MaxGainPerSec · elapsed`, anchored on the fleet-wide
+  `EVOLIA_GENESIS_UNIX`), which **bounds even the trust-on-first-use baseline** (a device cannot
+  predate genesis, so it can't assert more than physics allows) — closing the old v1 TOFU minting
+  hole to a physical limit; and (2) the **evolutive defense factor** (`defense.CeilingFactor`) — as
+  the absorbed-defense level rises (`ForgedWork` feeds it), the admissible growth headroom above what
+  we already trust shrinks toward a floor (`0.25×`), so *the more forged-work pressure evolIA absorbs,
+  the less value any block may claim*. This is the **PoW arm of `a_global`'s `D_evo`** (formal spec:
+  `evolia-security::evolutive::ceiling_factor`), and it breathes back up as the buffer decays.
+  Tightening applies only to headroom above trusted value, so an attack storm throttles new/forged
+  baselines without ever rejecting an established peer's honest increment. With `EVOLIA_GENESIS_UNIX`
+  unset the ceiling is `+Inf` (disabled; the per-increment PoW checks still apply) — set it fleet-wide
+  (same value on every node, like `EVOLIA_MESH_KEY`) to activate the bound. Residual latitude: a
+  key-holder can still pick any baseline *under* the physical ceiling on first contact; the structural
+  closure (verifiable history rather than a self-declared baseline) is on-chain PoW verification, the
+  planned next layer.
 - Both intake paths store a peer block **keyed by device id** (`recv_<device>.json`) and overwrite
   on re-send — the UDP receiver (`mesh.StoreIncoming`) and the HTTP bridge (`bridge.StoreBlock`,
   via the shared `mesh.StorePeerBlock`) — so `TotalV` counts each peer once and never inflates
@@ -189,9 +208,11 @@ Run from the `go/` directory:
 - Build: `go build ./...`
 - Vet: `go vet ./...`
 - Test: `go test ./...`
-- Run: `go run ./cmd/mesh-sync` (honors `EVOLIA_HOME`, `EVOLIA_PEERS`, and
+- Run: `go run ./cmd/mesh-sync` (honors `EVOLIA_HOME`, `EVOLIA_PEERS`,
   `EVOLIA_MESH_CYCLE_SECONDS` — the emit/decay cadence, default 5s; shared with
-  the bridge's defense-decay ticker)
+  the bridge's defense-decay ticker — and `EVOLIA_GENESIS_UNIX`, the fleet-wide
+  proof-of-work value-ceiling anchor: set the SAME Unix timestamp on every node,
+  like `EVOLIA_MESH_KEY`; unset disables the ceiling)
 
 ## Build / test / run (Python)
 

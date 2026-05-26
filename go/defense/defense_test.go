@@ -43,6 +43,26 @@ func TestNetIntensityDefenseSubtracts(t *testing.T) {
 	}
 }
 
+func TestCeilingFactorTightensWithDefense(t *testing.T) {
+	// Calm admits the full physical value ceiling (factor 1); as absorbed
+	// attacks accumulate the factor falls monotonically toward the floor, and
+	// once the level saturates it holds exactly at the floor — the PoW arm of the
+	// same D_evo counterweight that shrinks the admission Gate.
+	if f := CeilingFactor(0); f != 1.0 {
+		t.Fatalf("calm factor must be 1.0, got %v", f)
+	}
+	mid := CeilingFactor(pressureSaturation / 2)
+	if !(mid < 1.0 && mid > ceilingFloorFrac) {
+		t.Fatalf("mid pressure factor must be between floor and 1, got %v", mid)
+	}
+	if f := CeilingFactor(pressureSaturation); f != ceilingFloorFrac {
+		t.Fatalf("saturated factor must be the floor %v, got %v", ceilingFloorFrac, f)
+	}
+	if f := CeilingFactor(pressureSaturation * 10); f != ceilingFloorFrac {
+		t.Fatalf("beyond saturation the factor must hold at the floor, got %v", f)
+	}
+}
+
 // countAdmitted floods src at a frozen instant (no refill) and returns how many
 // datagrams the gate admitted before throttling — i.e. the current burst.
 func countAdmitted(g *Gate, src string) int {

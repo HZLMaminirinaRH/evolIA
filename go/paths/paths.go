@@ -7,6 +7,7 @@ package paths
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 )
 
 // WriteFileAtomic writes data durably: a temp file in the same directory,
@@ -84,6 +85,21 @@ func WorkProof() string { return filepath.Join(Home(), workProofFile) }
 func MeshSyncLog() string { return filepath.Join(Home(), "evolia_mesh_sync.log") }
 func NetworkLog() string  { return filepath.Join(Home(), "evolia_network.log") }
 func BridgeLog() string   { return filepath.Join(Home(), "evolia_bridge.log") }
+
+// GenesisUnix is the fleet-wide genesis timestamp (Unix seconds) from
+// EVOLIA_GENESIS_UNIX, the anchor for the proof-of-work value ceiling. It must
+// be the SAME value on every node (like EVOLIA_MESH_KEY), so all verifiers size
+// the ceiling identically; a per-node "now" would make peers reject each other.
+// Returns 0 when unset or invalid, which disables the ceiling (the per-increment
+// PoW checks still apply).
+func GenesisUnix() int64 {
+	if s := os.Getenv("EVOLIA_GENESIS_UNIX"); s != "" {
+		if v, err := strconv.ParseInt(s, 10, 64); err == nil && v > 0 {
+			return v
+		}
+	}
+	return 0
+}
 
 // DeviceID resolves this node's id: EVOLIA_DEVICE_ID, else hostname, else a default.
 func DeviceID() string {
