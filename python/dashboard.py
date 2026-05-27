@@ -41,6 +41,24 @@ def _mesh_totals() -> tuple[float, int]:
     return total_v, count
 
 
+def _transfer_totals() -> tuple[int, float]:
+    """This node's outbound on-chain BTC-e transfers: (count, total BTC-e sent).
+    Reads the dedicated transfer history written by ganache_db.transfer_btce."""
+    path = paths.transfer_history()
+    count = 0
+    sent_centi = 0
+    if path.exists():
+        for line in path.read_text().splitlines():
+            try:
+                entry = json.loads(line)
+            except ValueError:
+                continue
+            if entry.get("status") == "success" and entry.get("mode") == "transfer":
+                count += 1
+                sent_centi += int(entry.get("amount_centi", 0))
+    return count, sent_centi / 100.0
+
+
 def _ganache_totals() -> tuple[float, int]:
     log = paths.blockchain_sync_log()
     total_v = 0.0
@@ -64,6 +82,7 @@ def collect() -> dict:
     ganache_v, ganache_tx = _ganache_totals()
     wallet = _load_json(paths.bitcoin_wallet_state(), {"balance_sat": 0, "addresses": []})
     conversions = _load_json(paths.conversion_history(), {}).get("conversions", [])
+    transfers_out, transferred_btce = _transfer_totals()
 
     balance_sat = int(wallet.get("balance_sat", 0))
     return {
@@ -73,6 +92,7 @@ def collect() -> dict:
         },
         "mesh": {"total_v": mesh_v, "blocks": mesh_count},
         "ganache": {"anchored_v": ganache_v, "tx": ganache_tx},
+        "transfers": {"out": transfers_out, "sent_btce": transferred_btce},
         "bitcoin": {
             "addresses": len(wallet.get("addresses", [])),
             "balance_sat": balance_sat,
@@ -89,6 +109,7 @@ def render(snapshot: dict) -> str:
     m = snapshot["mesh"]
     g = snapshot["ganache"]
     b = snapshot["bitcoin"]
+    t = snapshot["transfers"]
     lines = [
         "=" * 64,
         "  EVOLIA — DASHBOARD",
@@ -99,6 +120,7 @@ def render(snapshot: dict) -> str:
         f"[BITCOIN]   {b['balance_sat']:,} SAT "
         f"({b['balance_btc']:.8f} BTC ~ ${b['balance_usd']:.2f})  "
         f"addr={b['addresses']}  conv={b['conversions']}",
+        f"[TRANSFERTS] {t['sent_btce']:.2f} BTC-e envoyés  tx={t['out']}",
         "-" * 64,
         f"[PUISSANCE COGNITIVE] {snapshot['cognitive_power']:.2f} BTC-e",
         "=" * 64,

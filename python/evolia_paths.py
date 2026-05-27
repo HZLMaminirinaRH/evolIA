@@ -75,6 +75,13 @@ def conversion_history() -> Path:
     return evolia_home() / "evolia_btc_conversion_history.json"
 
 
+def transfer_history() -> Path:
+    """Append-only log of this node's outbound on-chain BTC-e transfers
+    (EvoliaCore.transfer). Kept separate from the blockchain sync log so it never
+    pollutes the anchored-value totals the dashboard sums."""
+    return evolia_home() / "evolia_transfer_history.jsonl"
+
+
 def work_proof() -> Path:
     """Latest cycle's cognitive proof-of-work, attached by mesh-sync to the
     value it emits so peers can validate the increment (see go/pow)."""

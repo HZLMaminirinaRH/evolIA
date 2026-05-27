@@ -41,6 +41,8 @@ def test_artifact_present_and_valid():
     assert {"anchorValue", "blockCount", "totalCognitiveValue"} <= fns
     # The verified proof-of-work path must be present on-chain.
     assert {"anchorProof", "computeGain", "provenValue", "provenBlockCount"} <= fns
+    # The peer-to-peer BTC-e transfer path: per-account ledger + transfer.
+    assert {"provenOf", "transfer"} <= fns
 
 
 def test_anchor_on_real_evm():
@@ -106,6 +108,46 @@ def test_anchor_proof_recomputes_and_rejects_forgery():
         raised = True
     assert raised, "forged work must revert on-chain"
     assert contract.functions.provenValue().call() == 450
+
+
+def test_transfer_moves_proven_value_and_conserves_total():
+    if not HAVE_WEB3:
+        print("   (SKIP: web3/eth-tester not installed)")
+        return
+
+    w3 = Web3(EthereumTesterProvider())
+    alice, bob = w3.eth.accounts[0], w3.eth.accounts[1]
+    art = _artifact()
+    deployer = w3.eth.contract(abi=art["abi"], bytecode=art["bytecode"])
+    receipt = w3.eth.wait_for_transaction_receipt(deployer.constructor().transact({"from": alice}))
+    contract = w3.eth.contract(address=receipt["contractAddress"], abi=art["abi"])
+
+    # Alice proves work: photo×1 at v=0 over 5s -> 2.5 BTC-e = 250 centi. The
+    # per-account ledger credits the caller, and the global total tracks it.
+    ganache_db.anchor_proof_on_contract(w3, contract, alice, {"actions": {"photo_taken": 1}, "v": 0.0, "dt": 5.0})
+    assert ganache_db.balance_of(contract, alice) == 250
+    assert ganache_db.balance_of(contract, bob) == 0
+    assert contract.functions.provenValue().call() == 250
+
+    # Alice transfers 100 centi to Bob: balances move, the total is conserved.
+    entry = ganache_db.transfer_on_contract(w3, contract, alice, bob, 100)
+    assert entry["status"] == "success" and entry["mode"] == "transfer"
+    assert entry["amount_centi"] == 100 and entry["sender_balance_centi"] == 150
+    assert ganache_db.balance_of(contract, alice) == 150
+    assert ganache_db.balance_of(contract, bob) == 100
+    # Conservation: value moved between accounts, the proven total is unchanged.
+    assert contract.functions.provenValue().call() == 250
+
+    # Overdraw reverts on-chain — a transfer can never spend more than proven, so
+    # the balances are untouched (the structural anti-double-spend).
+    raised = False
+    try:
+        ganache_db.transfer_on_contract(w3, contract, alice, bob, 1000)
+    except Exception:
+        raised = True
+    assert raised, "an overdraw must revert on-chain"
+    assert ganache_db.balance_of(contract, alice) == 150
+    assert ganache_db.balance_of(contract, bob) == 100
 
 
 def test_proof_queue_drains_to_chain_full_fidelity():

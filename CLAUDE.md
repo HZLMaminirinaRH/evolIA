@@ -69,7 +69,9 @@ python/                  services that produce/consume the shared state
   evolia_bitcoin.py      V -> satoshi conversion + wallet/conversion state
   dashboard.py           read-only aggregation of the shared state
 contracts/               EvoliaCore.sol (on-chain PoW verifier: anchorProof
-                         recomputes ΔV + enforces rate caps -> provenValue) +
+                         recomputes ΔV + enforces rate caps -> provenValue;
+                         per-account ledger provenOf + transfer for owner-to-owner
+                         BTC-e payments, conserving the total) +
                          prebuilt EvoliaCore.json (abi+bytecode)
 android/                 Plan B: Kotlin app — foreground service supervising the
                          Go binaries + a native Kotlin port of the value engine
@@ -102,7 +104,21 @@ physical per-action **rate caps** — so the contract's `provenValue` is the
 on-chain-verified sum, not a self-declared number (a forged proof reverts), and
 tracks `total_v` cycle-for-cycle. It falls back to the legacy self-declared
 `anchorValue` snapshot only when no proof is queued (proofless bootstrap) or the deployed
-contract predates `anchorProof`. The contract mirrors the Go `pow` validator and
+contract predates `anchorProof`. Beyond accruing value, the contract is also a
+**peer-to-peer BTC-e ledger**: `anchorProof` credits the caller's per-account
+balance (`provenOf[msg.sender]`) alongside the global `provenValue`, and
+`EvoliaCore.transfer(to, amount)` moves proven BTC-e between owners. The chain
+orders transactions and checks the sender's balance, so a transfer can never
+overspend (the **structural anti-double-spend** the offline mesh alone cannot
+give) and the total is conserved (value moves, never created;
+`Σ provenOf == provenValue`). `ganache_db.transfer_btce(to, amount)` drives it,
+**gated on an active owner session** (`EVOLIA_SESSION_TOKEN`/`EVOLIA_DEVICE_ID`
+from `evolia-start`'s Argon2 auth) and logged to `evolia_transfer_history.jsonl`
+(separate from the sync log so it never pollutes anchored totals); the dashboard
+surfaces outbound transfers. On-chain strict: a transfer is only settled once the
+chain has verified it (no web3/node ⇒ status `local`, unsettled). `transfer_on_contract`,
+the conservation invariant and the overdraw revert are unit-tested in
+`tests/test_web3.py`. The contract mirrors the Go `pow` validator and
 `evolia_evolve.py` (rates/caps); **keep the constants in sync across the three
 languages.** `ganache_db.anchor_on_contract`, `anchor_proof_on_contract` and the
 forgery rejection are unit-tested against an in-process EVM in `tests/test_web3.py`.

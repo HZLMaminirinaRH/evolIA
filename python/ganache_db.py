@@ -143,6 +143,103 @@ def anchor_proof_on_contract(w3, contract, account, work):
     )
 
 
+def balance_of(contract, address) -> int:
+    """This account's proven BTC-e balance on-chain, in centi-BTC-e."""
+    from web3 import Web3  # local: module loads without web3
+
+    return contract.functions.provenOf(Web3.to_checksum_address(address)).call()
+
+
+def transfer_on_contract(w3, contract, from_account, to_address, amount_centi):
+    """Move `amount_centi` proven BTC-e (centi) from `from_account` to
+    `to_address` via EvoliaCore.transfer. The chain checks the balance and orders
+    the transaction, so it can never overspend — the structural anti-double-spend.
+    Returns the transfer-log entry; a revert (insufficient balance / zero / self)
+    propagates to the caller. Pulled out so the real on-chain path is unit-testable
+    against an in-process EVM (see tests/test_web3.py)."""
+    from web3 import Web3
+
+    to = Web3.to_checksum_address(to_address)
+    tx_hash = contract.functions.transfer(to, int(amount_centi)).transact({"from": from_account})
+    receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+    return {
+        "timestamp": _now(),
+        "status": "success",
+        "mode": "transfer",
+        "from": str(from_account),
+        "to": to,
+        "amount_centi": int(amount_centi),
+        "amount_btce": int(amount_centi) / 100.0,
+        "sender_balance_centi": balance_of(contract, from_account),
+        "tx_hash": receipt["transactionHash"].hex(),
+        "block": receipt["blockNumber"],
+    }
+
+
+def _owner_session_present() -> bool:
+    """The on-chain transfer is an owner action and must ride the same strict auth
+    as everything else. In the Termux deployment evolia-start authenticates the
+    owner (Rust/Argon2: PIN + password + optional biometric), mints a session
+    token and launches every service with EVOLIA_SESSION_TOKEN + EVOLIA_DEVICE_ID
+    in the environment. A present, non-empty pair therefore means this process
+    runs inside an owner-authenticated session — the same trust gate every other
+    service relies on, so a transfer cannot be initiated outside an authenticated
+    evolIA."""
+    return bool(os.environ.get("EVOLIA_SESSION_TOKEN") and os.environ.get("EVOLIA_DEVICE_ID"))
+
+
+def log_transfer(entry: dict) -> None:
+    path = paths.transfer_history()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "a") as f:
+        f.write(json.dumps(entry) + "\n")
+
+
+def transfer_btce(to_address: str, amount_btce: float, require_auth: bool = True) -> dict:
+    """Owner-gated on-chain BTC-e transfer between users. Verifies an owner session
+    is active, converts BTC-e to centi, connects to the node and calls
+    EvoliaCore.transfer, then records the result to the transfer history. Returns
+    the log entry (status 'success' | 'failed' | 'local'). When no node/contract
+    is reachable the transfer is NOT settled (status 'local') — on-chain strict
+    means a transfer only counts once the chain has ordered and verified it."""
+    if require_auth and not _owner_session_present():
+        entry = {
+            "timestamp": _now(), "status": "failed", "mode": "transfer",
+            "to": to_address, "error": "no owner session (transfer must run inside an authenticated evolIA)",
+        }
+        log_transfer(entry)
+        return entry
+    amount_centi = int(round(float(amount_btce) * 100))
+    if amount_centi <= 0:
+        entry = {
+            "timestamp": _now(), "status": "failed", "mode": "transfer",
+            "to": to_address, "error": "amount must be positive",
+        }
+        log_transfer(entry)
+        return entry
+    conn = _connect()
+    if conn is None:
+        entry = {
+            "timestamp": _now(), "status": "local", "mode": "transfer",
+            "to": to_address, "amount_centi": amount_centi, "amount_btce": amount_centi / 100.0,
+            "note": "web3/contract/node unavailable — transfer not settled on-chain",
+        }
+        log_transfer(entry)
+        return entry
+    w3, contract = conn
+    account = w3.eth.default_account
+    try:
+        entry = transfer_on_contract(w3, contract, account, to_address, amount_centi)
+    except Exception as exc:  # noqa: BLE001 - on-chain revert or infra error
+        entry = {
+            "timestamp": _now(), "status": "failed", "mode": "transfer",
+            "from": str(account), "to": to_address, "amount_centi": amount_centi,
+            "amount_btce": amount_centi / 100.0, "error": str(exc),
+        }
+    log_transfer(entry)
+    return entry
+
+
 def _supports_proof(contract) -> bool:
     """True when the deployed contract exposes anchorProof (the verified path)."""
     try:
@@ -300,8 +397,15 @@ def sync_continuous(interval: int = 30) -> None:
 
 if __name__ == "__main__":
     mode = sys.argv[1] if len(sys.argv) > 1 else "continuous"
-    interval = int(sys.argv[2]) if len(sys.argv) > 2 else 30
     if mode == "once":
         print(json.dumps(sync_once(), indent=2))
+    elif mode == "transfer":
+        if len(sys.argv) < 4:
+            print("usage: ganache_db.py transfer <to_address> <amount_btce>", file=sys.stderr)
+            sys.exit(2)
+        result = transfer_btce(sys.argv[2], float(sys.argv[3]))
+        print(json.dumps(result, indent=2))
+        sys.exit(0 if result.get("status") == "success" else 1)
     else:
+        interval = int(sys.argv[2]) if len(sys.argv) > 2 else 30
         sync_continuous(interval)

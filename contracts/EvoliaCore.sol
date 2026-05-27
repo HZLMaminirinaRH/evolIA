@@ -65,8 +65,15 @@ contract EvoliaCore {
     uint256 public provenValue;
     ProvenWork[] public provenHistory;
 
+    // Per-account proven balance (centi-BTC-e). anchorProof credits the caller;
+    // transfer moves value between accounts. The sum of provenOf across every
+    // account always equals provenValue: anchorProof grows both by the same gain,
+    // and transfer only moves value (never creates it), so the total is conserved.
+    mapping(address => uint256) public provenOf;
+
     event NewEvolutionAnchored(uint256 blockId, uint256 value, string sensoryType);
     event ProvenWorkAnchored(uint256 blockId, uint256 gain, uint256 provenValue);
+    event Transferred(address indexed from, address indexed to, uint256 amount);
 
     constructor() {
         primaryNode = msg.sender;
@@ -121,6 +128,7 @@ contract EvoliaCore {
         require(gain > 0, "no work");
 
         provenValue += gain;
+        provenOf[msg.sender] += gain;
         provenHistory.push(
             ProvenWork({
                 gain: gain,
@@ -135,6 +143,24 @@ contract EvoliaCore {
         );
         emit ProvenWorkAnchored(provenHistory.length - 1, gain, provenValue);
         return provenValue;
+    }
+
+    /// @notice Move proven BTC-e (centi) from the caller to `to`. The chain
+    ///         orders transactions and checks the caller's balance, so a transfer
+    ///         can never spend more than was proven — the structural
+    ///         anti-double-spend the offline mesh alone cannot provide. The total
+    ///         is conserved: value moves between accounts, provenValue (their sum)
+    ///         is unchanged. Reverts on a zero/self recipient, zero amount, or an
+    ///         overdraw. Returns the caller's new balance.
+    function transfer(address to, uint256 amount) external returns (uint256) {
+        require(to != address(0), "zero address");
+        require(to != msg.sender, "self transfer");
+        require(amount > 0, "zero amount");
+        require(provenOf[msg.sender] >= amount, "insufficient balance");
+        provenOf[msg.sender] -= amount;
+        provenOf[to] += amount;
+        emit Transferred(msg.sender, to, amount);
+        return provenOf[msg.sender];
     }
 
     function blockCount() external view returns (uint256) {
