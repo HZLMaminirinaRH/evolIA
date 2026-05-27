@@ -54,6 +54,18 @@
     <!-- Dashboard -->
     <string name="dashboard_wallet">Wallet ETH (à financer en gas):</string>
 
+    <!-- Sans-fil + arrière-plan -->
+    <string name="chat_radios_title">Activer le sans-fil</string>
+    <string name="chat_enable_both">Pour la messagerie pair-à-pair, activez le Bluetooth et le Wi-Fi afin que vos messages atteignent les pairs proches. Le Bluetooth fonctionne sans internet.</string>
+    <string name="chat_enable_bluetooth">Pour la messagerie hors-ligne, activez le Bluetooth afin que vos messages atteignent les pairs proches sans internet.</string>
+    <string name="chat_enable_wifi">Activez le Wi-Fi pour que vos messages atteignent les pairs de votre réseau local.</string>
+    <string name="chat_open_bluetooth_settings">Réglages Bluetooth</string>
+    <string name="chat_open_wifi_settings">Réglages Wi-Fi</string>
+    <string name="auth_later">Plus tard</string>
+    <string name="battery_opt_title">Garder evolIA actif</string>
+    <string name="battery_opt_message">Pour continuer à accumuler de la valeur en arrière-plan, autorisez evolIA à fonctionner sans restriction de batterie. L\'app continue tant que vous n\'appuyez pas sur Arrêter.</string>
+    <string name="battery_opt_allow">Autoriser</string>
+
     <!-- Copyright -->
     <string name="copyright">© 2026 HZLMaminirinaRH</string>
 </resources>

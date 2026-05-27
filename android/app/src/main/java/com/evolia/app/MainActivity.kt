@@ -1,11 +1,16 @@
 package com.evolia.app
 
 import android.Manifest
+import android.annotation.SuppressLint
+import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.provider.Settings
 import android.text.InputType
 import android.widget.Button
@@ -58,6 +63,9 @@ class MainActivity : AppCompatActivity() {
             pendingStart = false
             ContextCompat.startForegroundService(this, Intent(this, EvoliaService::class.java))
             updateStatus()
+            // Value accrues in the background only if the OS doesn't doze the
+            // service; ask the user to lift battery restrictions for evolIA.
+            requestBatteryExemptionIfNeeded()
         }
     }
 
@@ -295,6 +303,34 @@ class MainActivity : AppCompatActivity() {
             .setCancelable(false)
             .setPositiveButton(getString(R.string.auth_yes)) { _, _ -> onChoice(true) }
             .setNegativeButton(getString(R.string.auth_no)) { _, _ -> onChoice(false) }
+            .show()
+    }
+
+    // evolIA keeps running until the user presses Stop, but Doze/battery
+    // optimization can suspend the foreground service in the background. Offer the
+    // user the standard exemption so value keeps accruing while the app is closed.
+    @SuppressLint("BatteryLife")
+    private fun requestBatteryExemptionIfNeeded() {
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        if (pm.isIgnoringBatteryOptimizations(packageName)) return
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.battery_opt_title))
+            .setMessage(getString(R.string.battery_opt_message))
+            .setPositiveButton(getString(R.string.battery_opt_allow)) { _, _ ->
+                try {
+                    startActivity(
+                        Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                            .setData(Uri.parse("package:$packageName")),
+                    )
+                } catch (_: ActivityNotFoundException) {
+                    try {
+                        startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                    } catch (_: ActivityNotFoundException) {
+                        // No battery-optimization screen available — leave as is.
+                    }
+                }
+            }
+            .setNegativeButton(getString(R.string.auth_later), null)
             .show()
     }
 

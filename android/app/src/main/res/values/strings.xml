@@ -54,6 +54,18 @@
     <!-- Dashboard -->
     <string name="dashboard_wallet">ETH wallet (fund with gas):</string>
 
+    <!-- Wireless prompts + background -->
+    <string name="chat_radios_title">Turn on wireless</string>
+    <string name="chat_enable_both">For peer messaging, turn on Bluetooth and Wi-Fi so your messages can reach nearby peers. Bluetooth works with no internet.</string>
+    <string name="chat_enable_bluetooth">For offline peer messaging, turn on Bluetooth so your messages can reach nearby peers without internet.</string>
+    <string name="chat_enable_wifi">Turn on Wi-Fi so your messages can reach peers on your local network.</string>
+    <string name="chat_open_bluetooth_settings">Bluetooth settings</string>
+    <string name="chat_open_wifi_settings">Wi-Fi settings</string>
+    <string name="auth_later">Later</string>
+    <string name="battery_opt_title">Keep evolIA running</string>
+    <string name="battery_opt_message">To keep accumulating value in the background, allow evolIA to run without battery restrictions. It keeps running until you press Stop.</string>
+    <string name="battery_opt_allow">Allow</string>
+
     <!-- Copyright -->
     <string name="copyright">© 2026 HZLMaminirinaRH</string>
 </resources>

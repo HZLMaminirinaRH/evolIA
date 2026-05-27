@@ -54,6 +54,18 @@
     <!-- Dashboard -->
     <string name="dashboard_wallet">Valan\'ETH (satria misy gas):</string>
 
+    <!-- Tariby tsy misy + ambadika -->
+    <string name="chat_radios_title">Velomy ny tariby tsy misy</string>
+    <string name="chat_enable_both">Mba handefasana hafatra amin\'ny mpiara-belona, velomy ny Bluetooth sy ny Wi-Fi mba hahatongavan\'ny hafatrao amin\'ny mpiara-belona akaiky. Mandeha tsy misy aterineto ny Bluetooth.</string>
+    <string name="chat_enable_bluetooth">Mba handefasana hafatra tsy misy aterineto, velomy ny Bluetooth mba hahatongavan\'ny hafatrao amin\'ny mpiara-belona akaiky.</string>
+    <string name="chat_enable_wifi">Velomy ny Wi-Fi mba hahatongavan\'ny hafatrao amin\'ny mpiara-belona ao amin\'ny tambajotrao.</string>
+    <string name="chat_open_bluetooth_settings">Kirakira Bluetooth</string>
+    <string name="chat_open_wifi_settings">Kirakira Wi-Fi</string>
+    <string name="auth_later">Aoriana</string>
+    <string name="battery_opt_title">Avelao handeha foana i evolIA</string>
+    <string name="battery_opt_message">Mba hanohizana ny fanangonana sanda any ambadika, avelao i evolIA handeha tsy misy fameperana bateria. Mitohy izy mandra-pitsindrianao ny AÀTO.</string>
+    <string name="battery_opt_allow">Avela</string>
+
     <!-- Copyright -->
     <string name="copyright">© 2026 HZLMaminirinaRH</string>
 </resources>

@@ -1,9 +1,14 @@
 package com.evolia.app
 
+import android.bluetooth.BluetoothManager
+import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
+import android.net.wifi.WifiManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
@@ -102,6 +107,10 @@ class ChatActivity : AppCompatActivity() {
             },
         )
         renderLog()
+        // Messaging rides Bluetooth (offline) and Wi-Fi/LAN (UDP relay), so nudge
+        // the user to switch on whichever radio is off — apps can't toggle them
+        // silently on modern Android, so we point at the right settings screen.
+        promptEnableRadiosIfNeeded()
     }
 
     override fun onResume() {
@@ -201,6 +210,46 @@ class ChatActivity : AppCompatActivity() {
             }
             .setNegativeButton(getString(R.string.auth_cancel), null)
             .show()
+    }
+
+    private fun promptEnableRadiosIfNeeded() {
+        val btOff = !isBluetoothOn()
+        val wifiOff = !isWifiOn()
+        if (!btOff && !wifiOff) return
+        val msg = when {
+            btOff && wifiOff -> R.string.chat_enable_both
+            btOff -> R.string.chat_enable_bluetooth
+            else -> R.string.chat_enable_wifi
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.chat_radios_title)
+            .setMessage(msg)
+            .setPositiveButton(R.string.chat_open_bluetooth_settings) { _, _ ->
+                openSettings(Settings.ACTION_BLUETOOTH_SETTINGS)
+            }
+            .setNeutralButton(R.string.chat_open_wifi_settings) { _, _ ->
+                openSettings(Settings.ACTION_WIFI_SETTINGS)
+            }
+            .setNegativeButton(R.string.auth_later, null)
+            .show()
+    }
+
+    private fun isBluetoothOn(): Boolean =
+        (getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter?.isEnabled == true
+
+    private fun isWifiOn(): Boolean =
+        (applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager)?.isWifiEnabled == true
+
+    private fun openSettings(action: String) {
+        try {
+            startActivity(Intent(action))
+        } catch (_: ActivityNotFoundException) {
+            try {
+                startActivity(Intent(Settings.ACTION_SETTINGS))
+            } catch (_: ActivityNotFoundException) {
+                // No settings activity to handle this — nothing more we can do.
+            }
+        }
     }
 
     private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
