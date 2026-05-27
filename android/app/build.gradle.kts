@@ -30,6 +30,16 @@ android {
                 keyPassword = System.getenv("EVOLIA_KEY_PASSWORD")
             }
         }
+        // Shared debug keystore committed to the repo (standard Android debug
+        // credentials, NOT a production secret) so every CI debug APK is signed
+        // with the SAME key — you can update the app in place without
+        // uninstalling, keeping auth/wallet/identity/value state across builds.
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
     }
 
     buildTypes {
