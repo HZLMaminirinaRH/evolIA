@@ -66,12 +66,15 @@
     <string name="battery_opt_message">To keep accumulating value in the background, allow evolIA to run without battery restrictions. It keeps running until you press Stop.</string>
     <string name="battery_opt_allow">Allow</string>
 
-    <!-- Compass -->
-    <string name="btn_compass">Compass</string>
-    <string name="compass_title">Compass</string>
+    <!-- Sensors panel -->
+    <string name="btn_compass">SENSORS</string>
+    <string name="compass_title">Sensors</string>
     <string name="compass_readout">Heading: %1$d° %2$s</string>
     <string name="compass_magnetic">Magnetic field: %.1f µT</string>
-    <string name="compass_hint">Turn your phone to find your bearing — the gyroscope and magnetic field both feed your value while evolIA runs.</string>
+    <string name="compass_steps">Steps: %d</string>
+    <string name="compass_gravity">Gravity: %.2f m/s²</string>
+    <string name="compass_altitude">Altitude: %.0f m</string>
+    <string name="compass_hint">Move and orient your phone — the gyroscope, magnetic field, steps, gravity and altitude all feed your value while evolIA runs.</string>
     <string name="compass_unavailable">Compass unavailable on this device.</string>
     <string-array name="compass_cardinals">
         <item>N</item>

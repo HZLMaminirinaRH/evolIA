@@ -36,6 +36,10 @@ class AndroidSensors(context: Context) : SensorEventListener {
     @Volatile private var accelerometer = 0.0
     @Volatile private var gyroscope = 0.0
     @Volatile private var magnetometer = 0.0
+    @Volatile private var gravity = 0.0
+    @Volatile private var pressure = 0.0
+    @Volatile private var stepsCumulative = -1.0 // -1 = no reading yet
+    private var lastStepsCumulative = -1.0       // baseline for the per-cycle delta (sample thread only)
 
     private val bleDevices = Collections.synchronizedSet(mutableSetOf<String>())
     private var bleScanner: BluetoothLeScanner? = null
@@ -53,6 +57,11 @@ class AndroidSensors(context: Context) : SensorEventListener {
         register(Sensor.TYPE_LINEAR_ACCELERATION)
         register(Sensor.TYPE_GYROSCOPE)
         register(Sensor.TYPE_MAGNETIC_FIELD)
+        register(Sensor.TYPE_GRAVITY)
+        register(Sensor.TYPE_PRESSURE)
+        // Step counter needs ACTIVITY_RECOGNITION on Android 10+; skip (steps stay
+        // 0) when the permission is withheld, like any other absent sensor.
+        if (hasActivityRecognition()) register(Sensor.TYPE_STEP_COUNTER)
         startBle()
     }
 
@@ -69,15 +78,21 @@ class AndroidSensors(context: Context) : SensorEventListener {
 
     override fun onSensorChanged(event: SensorEvent) {
         val v = event.values
-        val n = minOf(3, v.size)
-        var sumSq = 0.0
-        for (i in 0 until n) sumSq += v[i].toDouble() * v[i]
-        val magnitude = sqrt(sumSq)
         when (event.sensor.type) {
-            Sensor.TYPE_LINEAR_ACCELERATION -> accelerometer = magnitude
-            Sensor.TYPE_GYROSCOPE -> gyroscope = magnitude
-            Sensor.TYPE_MAGNETIC_FIELD -> magnetometer = magnitude
+            Sensor.TYPE_LINEAR_ACCELERATION -> accelerometer = magnitude(v)
+            Sensor.TYPE_GYROSCOPE -> gyroscope = magnitude(v)
+            Sensor.TYPE_MAGNETIC_FIELD -> magnetometer = magnitude(v)
+            Sensor.TYPE_GRAVITY -> gravity = magnitude(v)
+            Sensor.TYPE_PRESSURE -> if (v.isNotEmpty()) pressure = v[0].toDouble()
+            Sensor.TYPE_STEP_COUNTER -> if (v.isNotEmpty()) stepsCumulative = v[0].toDouble()
         }
+    }
+
+    private fun magnitude(v: FloatArray): Double {
+        var sumSq = 0.0
+        val n = minOf(3, v.size)
+        for (i in 0 until n) sumSq += v[i].toDouble() * v[i]
+        return sqrt(sumSq)
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
@@ -138,6 +153,27 @@ class AndroidSensors(context: Context) : SensorEventListener {
     private fun hasPermission(permission: String): Boolean =
         ContextCompat.checkSelfPermission(app, permission) == PackageManager.PERMISSION_GRANTED
 
+    private fun hasActivityRecognition(): Boolean =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            hasPermission(Manifest.permission.ACTIVITY_RECOGNITION)
+        } else {
+            true
+        }
+
+    // Per-cycle steps from the cumulative counter; first read or a reboot reset
+    // yields 0 rather than a negative/huge spike. Called only from the value loop.
+    private fun stepDelta(): Double {
+        val cur = stepsCumulative
+        if (cur < 0) return 0.0
+        if (lastStepsCumulative < 0 || cur < lastStepsCumulative) {
+            lastStepsCumulative = cur
+            return 0.0
+        }
+        val d = cur - lastStepsCumulative
+        lastStepsCumulative = cur
+        return d
+    }
+
     fun sample(): SensorSample {
         // Distinct BLE devices seen since the last cycle, then reset the window.
         val ble = synchronized(bleDevices) {
@@ -152,6 +188,9 @@ class AndroidSensors(context: Context) : SensorEventListener {
             locationFix = hasLocationFix(),
             wifiCount = wifiCount(),
             bleCount = ble,
+            pedometer = stepDelta(),
+            gravity = gravity,
+            altimeter = pressure,
         )
     }
 

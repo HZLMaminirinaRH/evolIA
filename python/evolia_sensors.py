@@ -33,6 +33,9 @@ class SensorSample:
     location_fix: bool = False  # True if a GPS/network fix was obtained
     wifi_count: int = 0         # number of visible access points
     ble_count: int = 0          # number of visible BLE devices
+    pedometer: float = 0.0      # steps taken this cycle (0 if no step sensor)
+    gravity: float = 0.0        # gravity magnitude, m/s^2 (0 if no sensor)
+    altimeter: float = 0.0      # barometric pressure, hPa (0 if no barometer)
 
 
 def _have(cmd: str) -> bool:
@@ -56,34 +59,75 @@ def _magnitude(values) -> float:
         return 0.0
 
 
-def read_motion() -> tuple[float, float, float]:
-    """Return (linear_accel, gyro, magneto) magnitudes from termux-sensor.
+def _first(values) -> float:
+    """First scalar of a sensor's values array (e.g. pressure hPa, step count)."""
+    try:
+        return float(values[0]) if values else 0.0
+    except (TypeError, ValueError, IndexError):
+        return 0.0
 
-    For motion we read the *linear* acceleration (gravity removed): it sits at
-    ~0 at rest and rises with real movement, so it tracks activity far better
-    than the raw accelerometer, whose constant ~9.8 gravity floor would drown
-    the signal out. Sensor names vary by device, so we classify by keyword and
-    skip the 'uncalibrated' variants to avoid double counting.
+
+def _read_termux_all() -> dict:
+    """One termux-sensor pass -> raw readings for every motion/environment
+    sensor we track. Sensor names vary by device, so we classify by keyword and
+    skip 'uncalibrated' variants to avoid double counting. A sensor a device
+    lacks simply stays 0 (peers without it feed 0 into the formula).
+
+    For motion we read the *linear* acceleration (gravity removed): ~0 at rest,
+    rising with real movement, so it tracks activity far better than the raw
+    accelerometer whose constant ~9.8 gravity floor would drown the signal out.
     """
+    out = {"accel": 0.0, "gyro": 0.0, "magneto": 0.0,
+           "gravity": 0.0, "pressure": 0.0, "steps": 0.0}
     if not _have("termux-sensor"):
-        return 0.0, 0.0, 0.0
-
+        return out
     data = _run_json(["termux-sensor", "-a", "-n", "1"]) or {}
-    accel = gyro = magneto = 0.0
     for name, payload in data.items():
         if not isinstance(payload, dict):
             continue
-        mag = _magnitude(payload.get("values", []))
         low = name.lower()
         if "uncalib" in low:
             continue
-        if "linear" in low and "accel" in low and accel == 0.0:
-            accel = mag
-        elif "gyro" in low and gyro == 0.0:
-            gyro = mag
-        elif "magnet" in low and magneto == 0.0:
-            magneto = mag
-    return accel, gyro, magneto
+        values = payload.get("values", [])
+        mag = _magnitude(values)
+        if "linear" in low and "accel" in low and out["accel"] == 0.0:
+            out["accel"] = mag
+        elif "gyro" in low and out["gyro"] == 0.0:
+            out["gyro"] = mag
+        elif "magnet" in low and out["magneto"] == 0.0:
+            out["magneto"] = mag
+        elif "gravity" in low and out["gravity"] == 0.0:
+            out["gravity"] = mag
+        elif ("pressure" in low or "barometer" in low) and out["pressure"] == 0.0:
+            out["pressure"] = _first(values)
+        elif "step" in low and "counter" in low and out["steps"] == 0.0:
+            out["steps"] = _first(values)
+    return out
+
+
+def read_motion() -> tuple[float, float, float]:
+    """Return (linear_accel, gyro, magneto) magnitudes from termux-sensor."""
+    s = _read_termux_all()
+    return s["accel"], s["gyro"], s["magneto"]
+
+
+# The step counter is cumulative since boot; the value model wants steps *this
+# cycle*, so we diff against the previous reading. Module-level state is fine —
+# read_all runs in the single long-lived value loop. A drop (reboot reset) or a
+# zero reading (no sensor) yields 0 rather than a negative/huge spike.
+_last_steps: float | None = None
+
+
+def _step_delta(cumulative: float) -> float:
+    global _last_steps
+    if cumulative <= 0.0:
+        return 0.0
+    if _last_steps is None or cumulative < _last_steps:
+        _last_steps = cumulative
+        return 0.0
+    delta = cumulative - _last_steps
+    _last_steps = cumulative
+    return delta
 
 
 def read_location() -> bool:
@@ -142,14 +186,17 @@ def read_ble_count() -> int:
 
 def read_all() -> SensorSample:
     """Read every sensor once into a single SensorSample."""
-    accel, gyro, magneto = read_motion()
+    s = _read_termux_all()
     return SensorSample(
-        accelerometer=accel,
-        gyroscope=gyro,
-        magnetometer=magneto,
+        accelerometer=s["accel"],
+        gyroscope=s["gyro"],
+        magnetometer=s["magneto"],
         location_fix=read_location(),
         wifi_count=read_wifi_count(),
         ble_count=read_ble_count(),
+        pedometer=_step_delta(s["steps"]),
+        gravity=s["gravity"],
+        altimeter=s["pressure"],
     )
 
 

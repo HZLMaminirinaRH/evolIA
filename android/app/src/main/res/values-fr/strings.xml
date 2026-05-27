@@ -66,13 +66,16 @@
     <string name="battery_opt_message">Pour continuer à accumuler de la valeur en arrière-plan, autorisez evolIA à fonctionner sans restriction de batterie. L\'app continue tant que vous n\'appuyez pas sur Arrêter.</string>
     <string name="battery_opt_allow">Autoriser</string>
 
-    <!-- Boussole -->
-    <string name="btn_compass">Boussole</string>
-    <string name="compass_title">Boussole</string>
+    <!-- Capteurs -->
+    <string name="btn_compass">CAPTEURS</string>
+    <string name="compass_title">Capteurs</string>
     <string name="compass_readout">Cap : %1$d° %2$s</string>
     <string name="compass_magnetic">Champ magnétique : %.1f µT</string>
-    <string name="compass_hint">Tournez votre téléphone pour vous orienter — le gyroscope et le champ magnétique alimentent tous deux votre valeur quand evolIA tourne.</string>
-    <string name="compass_unavailable">Boussole indisponible sur cet appareil.</string>
+    <string name="compass_steps">Pas : %d</string>
+    <string name="compass_gravity">Gravité : %.2f m/s²</string>
+    <string name="compass_altitude">Altitude : %.0f m</string>
+    <string name="compass_hint">Bougez et orientez votre téléphone — le gyroscope, le champ magnétique, les pas, la gravité et l\'altitude alimentent tous votre valeur quand evolIA tourne.</string>
+    <string name="compass_unavailable">Capteurs indisponibles sur cet appareil.</string>
     <string-array name="compass_cardinals">
         <item>N</item>
         <item>NE</item>

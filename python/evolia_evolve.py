@@ -5,7 +5,7 @@
 `V` is computed from an exponential blend of every tracked signal:
 
     V = a.e^(A/sA) + b.e^(T/sT) + c.e^(C/sC) + d.M + e.e^(L/sL)
-        + f.e^(W/sW) + g.e^(B/sB)
+        + f.e^(W/sW) + g.e^(B/sB) + h.e^(P/sP) + i.G + j.Alt
 
     A  weighted digital-action score (screen, sms, photo, video)
     T  elapsed seconds in the session
@@ -14,6 +14,14 @@
     L  cumulative location fixes
     W  WiFi access points in range
     B  BLE devices in range
+    P  pedometer steps taken this cycle (real engagement)
+    G  gravity-sensor presence (linear; ~0 when absent)
+    Alt barometric/altimeter presence (linear; ~0 when absent)
+
+Peers missing a sensor simply feed 0 for it. Because only the resulting
+`v_normalized` (and the per-cycle floor) are declared in the proof-of-work,
+adding signals here never changes the Go/Solidity validators — they take `v`
+as given — and the new signals propagate passively in each value block.
 
 The coefficients encode the requested ranking: a video action is worth the
 most (ACTION_RATES), and Bluetooth outranks WiFi (COEFF["ble"] > COEFF["wifi"]).
@@ -49,6 +57,9 @@ COEFF = {
     "location": 0.08,      # e
     "ble": 0.12,           # f  (Bluetooth — higher)
     "wifi": 0.05,          # g  (WiFi — lower)
+    "pedometer": 0.10,     # h  (steps this cycle — real engagement)
+    "gravity": 0.03,       # i  (linear; ~presence/orientation)
+    "altimeter": 0.03,     # j  (linear; barometric pressure presence)
 }
 
 # Exponent scales and the shared cap (keeps e^x bounded ~ e^3).
@@ -59,6 +70,7 @@ _SCALE = {
     "location": 20.0,
     "ble": 10.0,
     "wifi": 10.0,
+    "pedometer": 8.0,
 }
 _CAP = 3.0
 
@@ -90,7 +102,20 @@ def _magneto_norm(sample: SensorSample) -> float:
     return min(sample.magnetometer / 65.0, 1.0)
 
 
-def _components(a_score, elapsed, motion, magneto, loc_count, wifi, ble) -> dict:
+# Gravity magnitude sits at ~9.81 m/s² whenever the sensor exists and 0 when it
+# is absent, so this is a bounded presence/orientation term (peers without the
+# sensor contribute 0). Barometric pressure is ~1013 hPa at sea level; likewise
+# bounded, 0 when no barometer. Both are linear terms, like the magnetometer.
+def _gravity_norm(sample: SensorSample) -> float:
+    return min(sample.gravity / 9.81, 1.0)
+
+
+def _altimeter_norm(sample: SensorSample) -> float:
+    return min(sample.altimeter / 1013.25, 1.0)
+
+
+def _components(a_score, elapsed, motion, magneto, loc_count, wifi, ble,
+                pedometer, gravity, altimeter) -> dict:
     return {
         "actions": COEFF["actions"] * _exp(a_score, _SCALE["actions"]),
         "time": COEFF["time"] * _exp(elapsed, _SCALE["time"]),
@@ -99,12 +124,15 @@ def _components(a_score, elapsed, motion, magneto, loc_count, wifi, ble) -> dict
         "location": COEFF["location"] * _exp(loc_count, _SCALE["location"]),
         "wifi": COEFF["wifi"] * _exp(wifi, _SCALE["wifi"]),
         "ble": COEFF["ble"] * _exp(ble, _SCALE["ble"]),
+        "pedometer": COEFF["pedometer"] * _exp(pedometer, _SCALE["pedometer"]),
+        "gravity": COEFF["gravity"] * gravity,      # already normalized 0..1
+        "altimeter": COEFF["altimeter"] * altimeter,  # already normalized 0..1
     }
 
 
 # At-rest baseline (all inputs 0) and saturated ceiling (every exponent capped).
-_V_BASE = sum(_components(0, 0, 0, 0, 0, 0, 0).values())
-_V_MAX = sum(_components(1e9, 1e9, 1e9, 1.0, 1e9, 1e9, 1e9).values())
+_V_BASE = sum(_components(0, 0, 0, 0, 0, 0, 0, 0, 0, 0).values())
+_V_MAX = sum(_components(1e9, 1e9, 1e9, 1.0, 1e9, 1e9, 1e9, 1e9, 1.0, 1.0).values())
 
 
 @dataclass
@@ -128,6 +156,9 @@ def evolve(
         location_count,
         sample.wifi_count,
         sample.ble_count,
+        sample.pedometer,
+        _gravity_norm(sample),
+        _altimeter_norm(sample),
     )
     v_instant = sum(comps.values())
     v_norm = (v_instant - _V_BASE) / (_V_MAX - _V_BASE)

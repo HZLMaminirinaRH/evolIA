@@ -14,8 +14,9 @@ Per cycle:
 
 So actions are the baseline (video worth the most), the evolutive V amplifies
 them, and the sensors — linear acceleration, gyroscope, magnetometer, location,
-WiFi and BLE — feed V. State persists under EVOLIA_HOME and the headline figures
-are mirrored to evolia_identity_state.json for ganache_db and the dashboard.
+WiFi, BLE, pedometer, gravity and altimeter — feed V (a peer missing a sensor
+feeds 0). State persists under EVOLIA_HOME and the headline figures are mirrored
+to evolia_identity_state.json for ganache_db and the dashboard.
 """
 
 from __future__ import annotations

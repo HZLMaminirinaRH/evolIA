@@ -24,8 +24,19 @@ def _tmp_state():
 def test_all_inputs_modeled():
     for action in ("screen_input", "sms_sent", "photo_taken", "video_taken"):
         assert action in ACTION_RATES
-    for sensor in ("complexity", "magnetometer", "location", "wifi", "ble"):
+    for sensor in ("complexity", "magnetometer", "location", "wifi", "ble",
+                   "pedometer", "gravity", "altimeter"):
         assert sensor in COEFF
+
+
+def test_new_sensors_raise_v_and_absent_is_neutral():
+    rest = evolve({}, 0.0, SensorSample(), 0).v_normalized
+    # Each new sensor, present, must raise V above the all-absent baseline.
+    assert evolve({}, 0.0, SensorSample(pedometer=20), 0).v_normalized > rest
+    assert evolve({}, 0.0, SensorSample(gravity=9.81), 0).v_normalized > rest
+    assert evolve({}, 0.0, SensorSample(altimeter=1013.25), 0).v_normalized > rest
+    # A peer missing them (0) is exactly the baseline — never a penalty.
+    assert evolve({}, 0.0, SensorSample(pedometer=0, gravity=0, altimeter=0), 0).v_normalized == rest
 
 
 def test_video_worth_most():

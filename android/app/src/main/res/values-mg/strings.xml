@@ -66,13 +66,16 @@
     <string name="battery_opt_message">Mba hanohizana ny fanangonana sanda any ambadika, avelao i evolIA handeha tsy misy fameperana bateria. Mitohy izy mandra-pitsindrianao ny AÀTO.</string>
     <string name="battery_opt_allow">Avela</string>
 
-    <!-- Famantarana avaratra -->
-    <string name="btn_compass">Famantarana avaratra</string>
-    <string name="compass_title">Famantarana avaratra</string>
+    <!-- Famantarana (Sensors) -->
+    <string name="btn_compass">FAMANTARANA</string>
+    <string name="compass_title">Famantarana</string>
     <string name="compass_readout">Lalana: %1$d° %2$s</string>
     <string name="compass_magnetic">Saha magnetika: %.1f µT</string>
-    <string name="compass_hint">Avadiho ny finday mba hahitana ny lalana — samy mamahana ny sandanao ny gyroscope sy ny saha magnetika rehefa mandeha i evolIA.</string>
-    <string name="compass_unavailable">Tsy misy famantarana avaratra amin\'ity finday ity.</string>
+    <string name="compass_steps">Dihy: %d</string>
+    <string name="compass_gravity">Andrimpona: %.2f m/s²</string>
+    <string name="compass_altitude">Haavo: %.0f m</string>
+    <string name="compass_hint">Diahina sy fanodinana ny finday — ny gyroscope, ny saha magnetika, ny dihy, ny andrimpona ary ny haavo samy mamahana ny sandanao rehefa mandeha i evolIA.</string>
+    <string name="compass_unavailable">Tsy misy famantarana amin\'ity finday ity.</string>
     <string-array name="compass_cardinals">
         <item>Av</item>
         <item>AvAt</item>

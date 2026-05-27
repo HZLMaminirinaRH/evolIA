@@ -353,6 +353,9 @@ class MainActivity : AppCompatActivity() {
             perms += Manifest.permission.BLUETOOTH_SCAN
             perms += Manifest.permission.BLUETOOTH_CONNECT
         }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            perms += Manifest.permission.ACTIVITY_RECOGNITION // pedometer
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             perms += Manifest.permission.READ_MEDIA_IMAGES
             perms += Manifest.permission.READ_MEDIA_VIDEO

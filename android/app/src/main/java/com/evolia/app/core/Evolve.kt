@@ -12,6 +12,9 @@ data class SensorSample(
     val locationFix: Boolean = false,
     val wifiCount: Int = 0,
     val bleCount: Int = 0,
+    val pedometer: Double = 0.0,     // steps taken this cycle (0 if no step sensor)
+    val gravity: Double = 0.0,       // gravity magnitude, m/s^2 (0 if no sensor)
+    val altimeter: Double = 0.0,     // barometric pressure, hPa (0 if no barometer)
 )
 
 data class EvolveResult(
@@ -43,6 +46,9 @@ object Evolve {
         "location" to 0.08,
         "ble" to 0.12,
         "wifi" to 0.05,
+        "pedometer" to 0.10, // steps this cycle — real engagement
+        "gravity" to 0.03,   // linear; ~presence/orientation
+        "altimeter" to 0.03, // linear; barometric pressure presence
     )
 
     private val SCALE = mapOf(
@@ -52,6 +58,7 @@ object Evolve {
         "location" to 20.0,
         "ble" to 10.0,
         "wifi" to 10.0,
+        "pedometer" to 8.0,
     )
 
     private const val CAP = 3.0
@@ -75,6 +82,13 @@ object Evolve {
 
     private fun magnetoNorm(s: SensorSample): Double = min(s.magnetometer / 65.0, 1.0)
 
+    // Gravity ~9.81 m/s² when the sensor exists, 0 when absent; pressure ~1013 hPa
+    // at sea level, 0 when no barometer — bounded linear presence terms, like the
+    // magnetometer (a peer without the sensor feeds 0).
+    private fun gravityNorm(s: SensorSample): Double = min(s.gravity / 9.81, 1.0)
+
+    private fun altimeterNorm(s: SensorSample): Double = min(s.altimeter / 1013.25, 1.0)
+
     private fun components(
         aScore: Double,
         elapsed: Double,
@@ -83,6 +97,9 @@ object Evolve {
         locCount: Double,
         wifi: Double,
         ble: Double,
+        pedometer: Double,
+        gravity: Double,
+        altimeter: Double,
     ): Map<String, Double> = mapOf(
         "actions" to COEFF.getValue("actions") * expS(aScore, SCALE.getValue("actions")),
         "time" to COEFF.getValue("time") * expS(elapsed, SCALE.getValue("time")),
@@ -91,11 +108,14 @@ object Evolve {
         "location" to COEFF.getValue("location") * expS(locCount, SCALE.getValue("location")),
         "wifi" to COEFF.getValue("wifi") * expS(wifi, SCALE.getValue("wifi")),
         "ble" to COEFF.getValue("ble") * expS(ble, SCALE.getValue("ble")),
+        "pedometer" to COEFF.getValue("pedometer") * expS(pedometer, SCALE.getValue("pedometer")),
+        "gravity" to COEFF.getValue("gravity") * gravity,      // already normalized 0..1
+        "altimeter" to COEFF.getValue("altimeter") * altimeter, // already normalized 0..1
     )
 
     // At-rest baseline (all inputs 0) and saturated ceiling (every exponent capped).
-    private val V_BASE = components(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0).values.sum()
-    private val V_MAX = components(1e9, 1e9, 1e9, 1.0, 1e9, 1e9, 1e9).values.sum()
+    private val V_BASE = components(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0).values.sum()
+    private val V_MAX = components(1e9, 1e9, 1e9, 1.0, 1e9, 1e9, 1e9, 1e9, 1.0, 1.0).values.sum()
 
     fun evolve(
         actionCounts: Map<String, Int>,
@@ -111,6 +131,9 @@ object Evolve {
             locationCount.toDouble(),
             sample.wifiCount.toDouble(),
             sample.bleCount.toDouble(),
+            sample.pedometer,
+            gravityNorm(sample),
+            altimeterNorm(sample),
         )
         val vInstant = comps.values.sum()
         val vNorm = ((vInstant - V_BASE) / (V_MAX - V_BASE)).coerceIn(0.0, 1.0)

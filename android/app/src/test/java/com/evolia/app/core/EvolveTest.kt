@@ -45,4 +45,14 @@ class EvolveTest {
         val many = Evolve.evolve(mapOf("video_taken" to 10), 0.0, SensorSample(), 0)
         assertTrue(many.vNormalized > few.vNormalized)
     }
+
+    @Test
+    fun newSensorsRaiseValueAndAbsentIsNeutral() {
+        val rest = Evolve.evolve(emptyMap(), 0.0, SensorSample(), 0).vNormalized
+        assertTrue(Evolve.evolve(emptyMap(), 0.0, SensorSample(pedometer = 20.0), 0).vNormalized > rest)
+        assertTrue(Evolve.evolve(emptyMap(), 0.0, SensorSample(gravity = 9.81), 0).vNormalized > rest)
+        assertTrue(Evolve.evolve(emptyMap(), 0.0, SensorSample(altimeter = 1013.25), 0).vNormalized > rest)
+        // A peer missing the new sensors (0) stays exactly at baseline — no penalty.
+        assertEquals(rest, Evolve.evolve(emptyMap(), 0.0, SensorSample(), 0).vNormalized, 1e-9)
+    }
 }
