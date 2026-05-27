@@ -1,0 +1,4 @@
+New: encrypted peer-to-peer chat that works offline over Bluetooth (and Wi-Fi/LAN),
+plus a visual compass so you keep your bearings while your activity accrues value.
+evolIA now keeps running in the background until you press Stop, and writing a
+message counts as valued activity.

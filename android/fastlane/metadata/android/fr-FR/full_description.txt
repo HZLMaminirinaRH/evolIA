@@ -7,6 +7,7 @@ Principes de conception :
 * Local d'abord. Le modèle de valeur tourne sur votre appareil et se dégrade gracieusement lorsqu'un capteur ou une permission est indisponible — rien ne casse hors appareil.
 * Ouvert et polyglotte. Une colonne de sécurité en Rust, un réseau maillé en Go, des services Python, et un moteur Kotlin autonome qui fonctionne seul, sans aucun binaire embarqué.
 * Prêt pour le maillage. Synchronisation pair-à-pair optionnelle avec authentification cryptographique des blocs et une défense adaptative, strictement réactive, qui ne riposte jamais.
+* Chat pair-à-pair privé. Des mini-messages chiffrés de bout en bout qui fonctionnent hors-ligne via Bluetooth (et Wi-Fi/LAN) — le relais ne voit jamais le texte en clair. Une boussole visuelle vous garde orienté pendant que votre activité accumule de la valeur.
 * Vérifiable, pas spéculatif. Une preuve de travail cognitive autonome protège le modèle de valeur. L'ancrage optionnel sur chaîne peut viser un nœud local, donc aucun fonds ni aucun compte n'est jamais requis.
 
 evolIA est un logiciel libre et open-source, publié sous licence MIT. Il ne nécessite aucun compte et fonctionne sans aucun service cloud.
