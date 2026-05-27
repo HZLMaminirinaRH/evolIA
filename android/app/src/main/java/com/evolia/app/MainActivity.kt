@@ -38,13 +38,14 @@ import java.io.File
 class MainActivity : AppCompatActivity() {
 
     private lateinit var status: TextView
+    private lateinit var startButton: Button
     private var pendingStart = false
 
     // Live dashboard refresh while the activity is in the foreground.
     private val refreshHandler = Handler(Looper.getMainLooper())
     private val refreshTick = object : Runnable {
         override fun run() {
-            status.text = readStatus()
+            updateStatus()
             refreshHandler.postDelayed(this, REFRESH_MS)
         }
     }
@@ -56,7 +57,7 @@ class MainActivity : AppCompatActivity() {
         if (pendingStart) {
             pendingStart = false
             ContextCompat.startForegroundService(this, Intent(this, EvoliaService::class.java))
-            status.text = readStatus()
+            updateStatus()
         }
     }
 
@@ -64,54 +65,65 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         status = TextView(this)
 
-        val start = Button(this).apply {
-            text = "Démarrer Evolia"
+        startButton = Button(this).apply {
+            text = getString(R.string.btn_start)
             setOnClickListener { authenticateThenStart() }
         }
         val stop = Button(this).apply {
-            text = "Arrêter"
+            text = getString(R.string.btn_stop)
             setOnClickListener {
                 stopService(Intent(this@MainActivity, EvoliaService::class.java))
-                status.text = "Arrêté."
+                updateStatus()
             }
         }
         val refresh = Button(this).apply {
-            text = "Rafraîchir l'état"
-            setOnClickListener { status.text = readStatus() }
+            text = getString(R.string.btn_refresh)
+            setOnClickListener { updateStatus() }
         }
         val recordVideo = Button(this).apply {
-            text = "Action: vidéo (+8 BTC-e)"
+            text = getString(R.string.btn_actions)
             setOnClickListener {
                 ActionQueue.enqueue(EvoliaPaths(File(filesDir, "evolia")), "video_taken")
-                status.text = "Action enregistrée (sera prise au prochain cycle)."
+                toast(getString(R.string.msg_action_recorded))
             }
         }
         val convertBtc = Button(this).apply {
-            text = "Convertir V → BTC"
+            text = getString(R.string.btn_convert)
             setOnClickListener {
                 val paths = EvoliaPaths(File(filesDir, "evolia"))
                 val bridge = BitcoinBridge(paths)
                 bridge.load()
                 val v = Dashboard.collect(paths).personal.totalV
                 val conv = bridge.queueConversion(v)
-                toast("Conversion V=%.2f → %d SAT (pending)".format(v, conv.optLong("sat")))
-                status.text = readStatus()
+                toast(getString(R.string.msg_conversion).format(v, conv.optLong("sat")))
+                updateStatus()
             }
+        }
+
+        val copyright = TextView(this).apply {
+            text = getString(R.string.copyright)
+            textAlignment = android.view.View.TEXT_ALIGNMENT_CENTER
+            alpha = 0.3f
+            textSize = 10f
         }
 
         setContentView(
             LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(40, 80, 40, 40)
-                addView(start)
+                addView(startButton)
                 addView(stop)
                 addView(recordVideo)
                 addView(convertBtc)
                 addView(refresh)
-                addView(status)
+                addView(status, LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                ).apply { weight = 1f })
+                addView(copyright)
             },
         )
-        status.text = readStatus()
+        updateStatus()
     }
 
     override fun onResume() {
@@ -122,6 +134,18 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         refreshHandler.removeCallbacks(refreshTick)
+    }
+
+    private fun updateStatus() {
+        status.text = readStatus()
+        val isRunning = isEvoliaRunning()
+        startButton.visibility = if (isRunning) android.view.View.GONE else android.view.View.VISIBLE
+    }
+
+    private fun isEvoliaRunning(): Boolean {
+        val manager = getSystemService(android.content.Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+        return manager.getRunningServices(Int.MAX_VALUE)
+            .any { it.service.className == EvoliaService::class.java.name }
     }
 
     // --- auth gate -----------------------------------------------------------
@@ -168,17 +192,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun promptSetup(store: AuthStore, onDone: (String) -> Unit) {
-        promptSecret("Créer un PIN (4-6 chiffres)", numeric = true) { pin ->
+        promptSecret(getString(R.string.setup_pin), numeric = true) { pin ->
             if (!AuthStore.isValidPin(pin)) {
-                toast("PIN invalide (4-6 chiffres).")
+                toast(getString(R.string.msg_pin_invalid))
             } else {
-                promptSecret("Créer un mot de passe (min 8)", numeric = false) { pw ->
+                promptSecret(getString(R.string.setup_password), numeric = false) { pw ->
                     if (!AuthStore.isValidPassword(pw)) {
-                        toast("Mot de passe trop court (min 8).")
+                        toast(getString(R.string.msg_password_invalid))
                     } else {
-                        confirm("Activer la biométrie (empreinte) ?") { bio ->
+                        confirm(getString(R.string.setup_biometric)) { bio ->
                             store.setup(pin, pw, bio)
-                            toast("Authentification configurée.")
+                            toast(getString(R.string.msg_auth_configured))
                             onDone(pw)
                         }
                     }
@@ -188,27 +212,27 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun promptPin(store: AuthStore, attempts: Int = MAX_ATTEMPTS, onOk: () -> Unit) {
-        promptSecret("PIN", numeric = true) { pin ->
+        promptSecret(getString(R.string.auth_pin), numeric = true) { pin ->
             when {
                 store.verifyPin(pin) -> onOk()
                 attempts > 1 -> {
-                    toast("PIN incorrect (${attempts - 1} essai(s) restant(s)).")
+                    toast(getString(R.string.msg_pin_incorrect).format(attempts - 1))
                     promptPin(store, attempts - 1, onOk)
                 }
-                else -> toast("Authentification échouée.")
+                else -> toast(getString(R.string.msg_auth_failed))
             }
         }
     }
 
     private fun promptPassword(store: AuthStore, attempts: Int = MAX_ATTEMPTS, onOk: (String) -> Unit) {
-        promptSecret("Mot de passe", numeric = false) { pw ->
+        promptSecret(getString(R.string.auth_password), numeric = false) { pw ->
             when {
                 store.verifyPassword(pw) -> onOk(pw)
                 attempts > 1 -> {
-                    toast("Mot de passe incorrect (${attempts - 1} essai(s) restant(s)).")
+                    toast(getString(R.string.msg_password_incorrect).format(attempts - 1))
                     promptPassword(store, attempts - 1, onOk)
                 }
-                else -> toast("Authentification échouée.")
+                else -> toast(getString(R.string.msg_auth_failed))
             }
         }
     }
@@ -217,7 +241,7 @@ class MainActivity : AppCompatActivity() {
         val canAuth = BiometricManager.from(this)
             .canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK)
         if (canAuth != BiometricManager.BIOMETRIC_SUCCESS) {
-            toast("Biométrie indisponible — étape ignorée.")
+            toast(getString(R.string.msg_biometric_unavailable))
             onSuccess()
             return
         }
@@ -236,9 +260,9 @@ class MainActivity : AppCompatActivity() {
         )
         prompt.authenticate(
             BiometricPrompt.PromptInfo.Builder()
-                .setTitle("Authentification biométrique")
-                .setSubtitle("Confirmez votre identité")
-                .setNegativeButtonText("Annuler")
+                .setTitle(getString(R.string.auth_biometric))
+                .setSubtitle(getString(R.string.auth_confirm))
+                .setNegativeButtonText(getString(R.string.auth_cancel))
                 .build(),
         )
     }
@@ -255,8 +279,8 @@ class MainActivity : AppCompatActivity() {
             .setTitle(title)
             .setView(input)
             .setCancelable(false)
-            .setPositiveButton("OK") { _, _ -> onOk(input.text.toString()) }
-            .setNegativeButton("Annuler", null)
+            .setPositiveButton(getString(R.string.auth_ok)) { _, _ -> onOk(input.text.toString()) }
+            .setNegativeButton(getString(R.string.auth_cancel), null)
             .show()
     }
 
@@ -264,8 +288,8 @@ class MainActivity : AppCompatActivity() {
         AlertDialog.Builder(this)
             .setMessage(message)
             .setCancelable(false)
-            .setPositiveButton("Oui") { _, _ -> onChoice(true) }
-            .setNegativeButton("Non") { _, _ -> onChoice(false) }
+            .setPositiveButton(getString(R.string.auth_yes)) { _, _ -> onChoice(true) }
+            .setNegativeButton(getString(R.string.auth_no)) { _, _ -> onChoice(false) }
             .show()
     }
 
@@ -295,7 +319,8 @@ class MainActivity : AppCompatActivity() {
         val paths = EvoliaPaths(File(filesDir, "evolia"))
         val sb = StringBuilder()
         if (paths.walletAddress.exists()) {
-            sb.append("Wallet ETH (à financer en gas):\n")
+            sb.append(getString(R.string.dashboard_wallet))
+                .append("\n")
                 .append(paths.walletAddress.readText())
                 .append("\n\n")
         }

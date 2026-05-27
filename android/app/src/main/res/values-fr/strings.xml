@@ -1,0 +1,41 @@
+<resources>
+    <string name="app_name">evolIA</string>
+
+    <!-- Control panel buttons -->
+    <string name="btn_start">Démarrer Evolia</string>
+    <string name="btn_stop">Arrêter</string>
+    <string name="btn_actions">Actions: V</string>
+    <string name="btn_convert">Valeurs V → BTC-e</string>
+    <string name="btn_refresh">F5</string>
+
+    <!-- Auth messages -->
+    <string name="setup_pin">Créer un PIN (4-6 chiffres)</string>
+    <string name="setup_password">Créer un mot de passe (min 8)</string>
+    <string name="setup_biometric">Activer la biométrie (empreinte) ?</string>
+    <string name="auth_pin">PIN</string>
+    <string name="auth_password">Mot de passe</string>
+    <string name="auth_biometric">Authentification biométrique</string>
+    <string name="auth_confirm">Confirmez votre identité</string>
+    <string name="auth_cancel">Annuler</string>
+    <string name="auth_yes">Oui</string>
+    <string name="auth_no">Non</string>
+    <string name="auth_ok">OK</string>
+
+    <!-- Notifications -->
+    <string name="msg_pin_invalid">PIN invalide (4-6 chiffres).</string>
+    <string name="msg_password_invalid">Mot de passe trop court (min 8).</string>
+    <string name="msg_pin_incorrect">PIN incorrect (%d essai(s) restant(s)).</string>
+    <string name="msg_password_incorrect">Mot de passe incorrect (%d essai(s) restant(s)).</string>
+    <string name="msg_auth_failed">Authentification échouée.</string>
+    <string name="msg_auth_configured">Authentification configurée.</string>
+    <string name="msg_biometric_unavailable">Biométrie indisponible — étape ignorée.</string>
+    <string name="msg_action_recorded">Action enregistrée (sera prise au prochain cycle).</string>
+    <string name="msg_conversion">Conversion V=%.2f → %d SAT (en attente)</string>
+    <string name="msg_stopped">Arrêté.</string>
+
+    <!-- Dashboard -->
+    <string name="dashboard_wallet">Wallet ETH (à financer en gas):</string>
+
+    <!-- Copyright -->
+    <string name="copyright">© 2026 HZLMaminirinaRH</string>
+</resources>

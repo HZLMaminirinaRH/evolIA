@@ -1,3 +1,41 @@
 <resources>
     <string name="app_name">evolIA</string>
+
+    <!-- Control panel buttons -->
+    <string name="btn_start">Start Evolia</string>
+    <string name="btn_stop">Stop</string>
+    <string name="btn_actions">Actions: V</string>
+    <string name="btn_convert">Values V → BTC-e</string>
+    <string name="btn_refresh">F5</string>
+
+    <!-- Auth messages -->
+    <string name="setup_pin">Create a PIN (4-6 digits)</string>
+    <string name="setup_password">Create a password (min 8)</string>
+    <string name="setup_biometric">Enable biometric (fingerprint)?</string>
+    <string name="auth_pin">PIN</string>
+    <string name="auth_password">Password</string>
+    <string name="auth_biometric">Biometric authentication</string>
+    <string name="auth_confirm">Confirm your identity</string>
+    <string name="auth_cancel">Cancel</string>
+    <string name="auth_yes">Yes</string>
+    <string name="auth_no">No</string>
+    <string name="auth_ok">OK</string>
+
+    <!-- Notifications -->
+    <string name="msg_pin_invalid">Invalid PIN (4-6 digits).</string>
+    <string name="msg_password_invalid">Password too short (min 8).</string>
+    <string name="msg_pin_incorrect">Incorrect PIN (%d attempt(s) remaining).</string>
+    <string name="msg_password_incorrect">Incorrect password (%d attempt(s) remaining).</string>
+    <string name="msg_auth_failed">Authentication failed.</string>
+    <string name="msg_auth_configured">Authentication configured.</string>
+    <string name="msg_biometric_unavailable">Biometrics unavailable — step skipped.</string>
+    <string name="msg_action_recorded">Action recorded (will be taken at next cycle).</string>
+    <string name="msg_conversion">Conversion V=%.2f → %d SAT (pending)</string>
+    <string name="msg_stopped">Stopped.</string>
+
+    <!-- Dashboard -->
+    <string name="dashboard_wallet">ETH wallet (fund with gas):</string>
+
+    <!-- Copyright -->
+    <string name="copyright">© 2026 HZLMaminirinaRH</string>
 </resources>

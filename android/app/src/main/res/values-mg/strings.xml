@@ -1,0 +1,41 @@
+<resources>
+    <string name="app_name">evolIA</string>
+
+    <!-- Control panel buttons -->
+    <string name="btn_start">NDAO! Evolia</string>
+    <string name="btn_stop">AÀTO!</string>
+    <string name="btn_actions">ASA @ FINDAY (V)</string>
+    <string name="btn_convert">EZAKA BTC-E VITA!</string>
+    <string name="btn_refresh">F5</string>
+
+    <!-- Auth messages -->
+    <string name="setup_pin">Mamorona PIN (4-6 isa)</string>
+    <string name="setup_password">Mamorona teny miafina (faran\'ny 8)</string>
+    <string name="setup_biometric">Mamela biometrika (rara) ?</string>
+    <string name="auth_pin">PIN</string>
+    <string name="auth_password">Teny miafina</string>
+    <string name="auth_biometric">Fanamarinana biometrika</string>
+    <string name="auth_confirm">Hamarino ny ianao</string>
+    <string name="auth_cancel">Azahoana</string>
+    <string name="auth_yes">Eny</string>
+    <string name="auth_no">Tsia</string>
+    <string name="auth_ok">OK</string>
+
+    <!-- Notifications -->
+    <string name="msg_pin_invalid">PIN tsy valid (4-6 isa).</string>
+    <string name="msg_password_invalid">Teny miafina fohy loatra (faran\'ny 8).</string>
+    <string name="msg_pin_incorrect">PIN tsy mety (%d fitsapana sisa).</string>
+    <string name="msg_password_incorrect">Teny miafina tsy mety (%d fitsapana sisa).</string>
+    <string name="msg_auth_failed">Fanamarinana tsy nampitsarana.</string>
+    <string name="msg_auth_configured">Fanamarinana nametraka.</string>
+    <string name="msg_biometric_unavailable">Biometrika tsy misy — dingana notapaka.</string>
+    <string name="msg_action_recorded">Asa voarakitra (ho raisina amin\'ny firodina manaraka).</string>
+    <string name="msg_conversion">Famadihana V=%.2f → %d SAT (nahantitra)</string>
+    <string name="msg_stopped">Nitsahatra.</string>
+
+    <!-- Dashboard -->
+    <string name="dashboard_wallet">Valan\'ETH (satria misy gas):</string>
+
+    <!-- Copyright -->
+    <string name="copyright">© 2026 HZLMaminirinaRH</string>
+</resources>
