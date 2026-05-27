@@ -210,6 +210,13 @@ Python `evolia_paths`, Go `mesh.Home`), so the services communicate through file
   which the app reads and decrypts. Hostile chat input (malformed/injection) feeds the **same
   adaptive defense + intake gate** as block input. Delivery is best-effort (UDP; the receiver dedups
   by message id), so an ACK/retry or HTTP-bridge layer can ride on top without protocol changes.
+  The chat is **ephemeral**: messages live only for a running session — `EvoliaService`
+  purges the inbox + outbox (`ChatStore.purgeMessages`) on stop (`onDestroy`, after the relay
+  child is killed) and on start (`onCreate`, a clean slate even after an OS kill), and the UI
+  drops its in-memory view when evolIA is not running. Nothing confidential lingers on disk or in
+  memory past a stop. The identity key and contacts are kept (not messages; the device stays
+  reachable). On-disk the relayed bodies are sealed anyway — plaintext exists only transiently in
+  the app during display.
 - The **Super-peer role** is a central coordinating node (asymmetric, not hierarchical) that:
   - **Reads** peer blocks from the mesh vault (carrying their cognitive work proofs)
   - **Learns** patterns: which actions/sensor mixes achieve high `v_normalized`, user engagement,

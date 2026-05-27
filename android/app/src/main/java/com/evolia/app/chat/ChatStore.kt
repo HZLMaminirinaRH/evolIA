@@ -3,6 +3,7 @@ package com.evolia.app.chat
 import com.evolia.app.core.EvoliaPaths
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 
 /**
  * File-backed state for the peer chat, sharing the exact EVOLIA_HOME layout the
@@ -67,6 +68,19 @@ class ChatStore(private val paths: EvoliaPaths) {
         } catch (_: Exception) {
             emptyList()
         }
+    }
+
+    /**
+     * Ephemeral chat: drop ALL message content (inbox + outbox, and any
+     * half-drained outbox the relay left mid-cycle). Called when evolIA stops, so
+     * nothing confidential lingers on disk past a running session — the app keeps
+     * no message history. The identity key and contacts are kept (they are not
+     * messages, and the device must stay reachable on the next start).
+     */
+    fun purgeMessages() {
+        paths.chatInbox.delete()
+        paths.chatOutbox.delete()
+        File(paths.chatOutbox.path + ".draining").delete()
     }
 
     /** Add or update a contact (keyed by bundle), persisting the list. */

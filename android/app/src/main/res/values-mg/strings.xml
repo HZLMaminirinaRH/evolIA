@@ -48,6 +48,7 @@
     <string name="chat_no_contacts">(tsy misy namana)</string>
     <string name="chat_send_failed">Lakile diso — tsy lasa.</string>
     <string name="chat_empty">Tsy misy hafatra.</string>
+    <string name="chat_inactive">evolIA nijanona — tsy mandeha ny hafatra (voafafa rehefa mijanona).</string>
     <string name="chat_me_prefix">izaho → %1$s: %2$s</string>
 
     <!-- Dashboard -->

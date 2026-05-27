@@ -48,6 +48,7 @@
     <string name="chat_no_contacts">(no contacts)</string>
     <string name="chat_send_failed">Invalid key — send failed.</string>
     <string name="chat_empty">No messages.</string>
+    <string name="chat_inactive">evolIA stopped — messaging inactive (messages are erased on stop).</string>
     <string name="chat_me_prefix">me → %1$s: %2$s</string>
 
     <!-- Dashboard -->

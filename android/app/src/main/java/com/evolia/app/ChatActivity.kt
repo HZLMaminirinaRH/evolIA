@@ -109,6 +109,10 @@ class ChatActivity : AppCompatActivity() {
     private fun sendMessage(input: EditText) {
         val text = input.text.toString().trim()
         if (text.isEmpty()) return
+        if (!isEvoliaRunning()) {
+            toast(getString(R.string.chat_inactive))
+            return
+        }
         val contact = selectedContact()
         if (contact == null) {
             toast(getString(R.string.chat_no_contact))
@@ -136,10 +140,23 @@ class ChatActivity : AppCompatActivity() {
     }
 
     private fun renderLog() {
+        // Ephemeral: while evolIA is stopped there is no live session — messages
+        // have been purged from disk, so drop the in-memory view too. Nothing
+        // confidential survives a stop, on disk or in memory.
+        if (!isEvoliaRunning()) {
+            sent.clear()
+            log.text = getString(R.string.chat_inactive)
+            return
+        }
         val sb = StringBuilder()
         manager.inbox().forEach { sb.append(it.senderFingerprint.take(8)).append(" > ").append(it.text).append("\n") }
         sent.forEach { sb.append(it).append("\n") }
         log.text = if (sb.isEmpty()) getString(R.string.chat_empty) else sb.toString()
+    }
+
+    private fun isEvoliaRunning(): Boolean {
+        val am = getSystemService(android.app.ActivityManager::class.java)
+        return am.getRunningServices(Int.MAX_VALUE).any { it.service.className == EvoliaService::class.java.name }
     }
 
     private fun shareBundle() {

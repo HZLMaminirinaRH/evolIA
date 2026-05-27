@@ -11,6 +11,7 @@ import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import com.evolia.app.chain.ChainAnchor
+import com.evolia.app.chat.ChatStore
 import com.evolia.app.core.ActionQueue
 import com.evolia.app.core.EvoliaPaths
 import com.evolia.app.core.EvoliaValue
@@ -67,6 +68,9 @@ class EvoliaService : Service() {
         super.onCreate()
         setupSecurityProvider()
         createChannel()
+        // Ephemeral chat: start every session from a clean slate, so messages from
+        // a prior run (or one the OS killed without onDestroy) never linger.
+        purgeChatMessages()
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "evolia:supervisor").apply {
             acquire()
@@ -187,8 +191,19 @@ class EvoliaService : Service() {
             processes.forEach { it.destroy() }
             processes.clear()
         }
+        // Children (incl. the chat relay that fills the inbox) are now stopped, so
+        // wipe all messages: stopping evolIA leaves nothing confidential on disk.
+        purgeChatMessages()
         wakeLock?.let { if (it.isHeld) it.release() }
         super.onDestroy()
+    }
+
+    private fun purgeChatMessages() {
+        try {
+            ChatStore(EvoliaPaths(File(filesDir, "evolia"))).purgeMessages()
+        } catch (_: Exception) {
+            // Best-effort: a missing dir or transient IO error must not block teardown.
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null

@@ -77,6 +77,26 @@ class ChatManagerTest {
     }
 
     @Test
+    fun purgeMessagesIsEphemeralButKeepsContacts() {
+        val home = Files.createTempDirectory("evolia-chat").toFile()
+        val paths = EvoliaPaths(home)
+        val store = ChatStore(paths)
+
+        store.addContact("Bob", "deadbeefbundle")
+        store.enqueue(ChatStore.Wire("id1", "to", "from", "ts", "sealed-body"))
+        paths.chatInbox.writeText("{\"id\":\"x\",\"to\":\"t\",\"from\":\"f\",\"ts\":\"s\",\"body\":\"b\"}\n")
+        assertTrue(paths.chatOutbox.exists())
+        assertTrue(paths.chatInbox.exists())
+
+        store.purgeMessages()
+
+        assertFalse("inbox is wiped on stop", paths.chatInbox.exists())
+        assertFalse("outbox is wiped on stop", paths.chatOutbox.exists())
+        assertTrue("messages are gone", store.readInbox().isEmpty())
+        assertEquals("contacts survive (not messages)", 1, store.contacts().size)
+    }
+
+    @Test
     fun wireSerializationRoundtrip() {
         val w = ChatStore.Wire("id1", "tofp", "fromfp", "2026-05-27T00:00:00Z", "opaque-body")
         val back = ChatStore.Wire.fromJson(w.toJson())
