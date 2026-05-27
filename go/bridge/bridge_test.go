@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"evolia/defense"
+	"evolia/mesh"
 	"evolia/paths"
 )
 
@@ -38,7 +40,7 @@ func TestFuseParamsMissingIncomingKeepsLocal(t *testing.T) {
 }
 
 func TestHealthEndpoint(t *testing.T) {
-	srv := NewServer("dev-1", t.TempDir())
+	srv := NewServer("dev-1", t.TempDir(), nil, nil)
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, req)
@@ -56,7 +58,7 @@ func TestHealthEndpoint(t *testing.T) {
 func TestBlockStoredAndCounted(t *testing.T) {
 	t.Setenv("EVOLIA_HOME", t.TempDir())
 	vault := paths.MeshVault()
-	srv := NewServer("dev-1", vault)
+	srv := NewServer("dev-1", vault, nil, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/block",
 		strings.NewReader(`{"source_device":"peerX","v_value":4.5,"cognitive_params":{"ALPHA":0.5}}`))
@@ -76,8 +78,93 @@ func TestBlockStoredAndCounted(t *testing.T) {
 	}
 }
 
+func TestBlockRepostOverwritesPerPeer(t *testing.T) {
+	t.Setenv("EVOLIA_HOME", t.TempDir())
+	vault := paths.MeshVault()
+	srv := NewServer("dev-1", vault, nil, nil)
+
+	post := func(v string) {
+		rec := httptest.NewRecorder()
+		srv.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/block",
+			strings.NewReader(`{"source_device":"peerX","v_value":`+v+`}`)))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("POST /block status = %d body=%s", rec.Code, rec.Body.String())
+		}
+	}
+
+	// The same peer posts three times; only the latest value must count — a
+	// re-post overwrites rather than accumulating (no TotalV double-count).
+	post("1.0")
+	post("2.0")
+	post("7.0")
+
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/mesh/total_v", nil))
+	var body map[string]float64
+	json.Unmarshal(rec.Body.Bytes(), &body)
+	if math.Abs(body["mesh_total_v"]-7.0) > 1e-9 {
+		t.Fatalf("mesh_total_v = %v, want 7.0 (latest, not summed)", body["mesh_total_v"])
+	}
+}
+
+func TestBridgeDefenseHardensOnHostileInput(t *testing.T) {
+	t.Setenv("EVOLIA_HOME", t.TempDir())
+	key := []byte("fleet-secret")
+	def := defense.New(64)
+	srv := NewServer("dev-1", paths.MeshVault(), key, def)
+
+	post := func(body string) int {
+		rec := httptest.NewRecorder()
+		srv.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/block", strings.NewReader(body)))
+		return rec.Code
+	}
+
+	// Injection-like source device is rejected and raises the defense.
+	if code := post(`{"source_device":"x'; DROP TABLE peers;--","v_value":1}`); code != http.StatusBadRequest {
+		t.Fatalf("injection: want 400, got %d", code)
+	}
+	// A forged/missing signature is rejected (a key is configured).
+	if code := post(`{"source_device":"peerX","v_value":4.5}`); code != http.StatusUnauthorized {
+		t.Fatalf("bad sig: want 401, got %d", code)
+	}
+	if def.Level() <= 0 {
+		t.Fatalf("defense must have risen after hostile input, got %v", def.Level())
+	}
+
+	// A correctly signed block carrying a valid proof of work is accepted
+	// (screen_input×90 at v=0 yields exactly 4.5).
+	good := `{"source_device":"peerX","v_value":4.5,"sig":"` + mesh.SignBlock(key, "peerX", 4.5) +
+		`","work":{"v_prev":0,"actions":{"screen_input":90},"v":0,"dt":5}}`
+	if code := post(good); code != http.StatusOK {
+		t.Fatalf("signed block: want 200, got %d", code)
+	}
+}
+
+func TestBridgeThrottlesUnderSustainedPressure(t *testing.T) {
+	t.Setenv("EVOLIA_HOME", t.TempDir())
+	def := defense.New(64)
+	// Saturate the absorbed defense so the intake throttle sits at its floor.
+	for i := 0; i < 12; i++ {
+		def.Record(defense.SQLInjection)
+	}
+	srv := NewServer("dev-1", paths.MeshVault(), nil, def)
+
+	post := func() int {
+		rec := httptest.NewRecorder()
+		srv.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/block",
+			strings.NewReader(`{"source_device":"peerX","v_value":1}`)))
+		return rec.Code
+	}
+	// The floor burst admits a couple, then a flood from the same source is
+	// throttled with 429 — without ever being recorded as a fresh attack.
+	codes := []int{post(), post(), post(), post()}
+	if codes[len(codes)-1] != http.StatusTooManyRequests {
+		t.Fatalf("a flood under saturated defense must be throttled, got %v", codes)
+	}
+}
+
 func TestBlockRejectsBadInput(t *testing.T) {
-	srv := NewServer("dev-1", t.TempDir())
+	srv := NewServer("dev-1", t.TempDir(), nil, nil)
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/block", strings.NewReader(`{}`)))
 	if rec.Code != http.StatusBadRequest {

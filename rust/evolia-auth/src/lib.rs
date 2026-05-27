@@ -66,8 +66,7 @@ pub fn load_config() -> Result<Option<AuthConfig>> {
 fn save_config(cfg: &AuthConfig) -> Result<()> {
     evolia_core::ensure_home()?;
     let path = evolia_core::auth_file();
-    std::fs::write(&path, serde_json::to_string_pretty(cfg)?)?;
-    evolia_core::set_owner_only(&path)?;
+    evolia_core::write_atomic(&path, serde_json::to_string_pretty(cfg)?.as_bytes())?;
     Ok(())
 }
 

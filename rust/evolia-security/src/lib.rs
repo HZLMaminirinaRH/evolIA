@@ -6,6 +6,8 @@
 //! - Session tokens: encrypted JSON with an expiry, bound to the device.
 //! - Detached signatures with HMAC-SHA256, verified in constant time.
 
+pub mod evolutive;
+
 use anyhow::{anyhow, Result};
 use argon2::Argon2;
 use base64::engine::general_purpose::STANDARD;

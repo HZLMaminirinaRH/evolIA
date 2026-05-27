@@ -1,0 +1,63 @@
+name: Release APK
+
+# Builds a signed release APK and attaches it to the GitHub Release for the tag.
+# IzzyOnDroid's fetcher then picks the APK up from the release automatically.
+#
+# Required repository secrets:
+#   EVOLIA_KEYSTORE_BASE64    base64 of evolia.keystore
+#   EVOLIA_KEYSTORE_PASSWORD  the keystore password
+#   EVOLIA_KEY_PASSWORD       the key password (same as keystore for the simple keytool flow)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to build and attach the signed APK to (e.g. v0.1.0)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  signed-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve target tag
+        id: tag
+        run: echo "name=${{ github.event.inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ steps.tag.outputs.name }}
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Decode signing keystore
+        run: echo "${{ secrets.EVOLIA_KEYSTORE_BASE64 }}" | base64 -d > "${RUNNER_TEMP}/evolia.keystore"
+
+      - name: Build signed release APK
+        working-directory: android
+        env:
+          EVOLIA_KEYSTORE_FILE: ${{ runner.temp }}/evolia.keystore
+          EVOLIA_KEYSTORE_PASSWORD: ${{ secrets.EVOLIA_KEYSTORE_PASSWORD }}
+          EVOLIA_KEY_ALIAS: evolia
+          EVOLIA_KEY_PASSWORD: ${{ secrets.EVOLIA_KEY_PASSWORD }}
+        run: ./gradlew :app:assembleRelease --no-daemon
+
+      - name: Attach APK to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.name }}
+        run: |
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --title "$TAG" --generate-notes
+          fi
+          gh release upload "$TAG" "$APK" --clobber

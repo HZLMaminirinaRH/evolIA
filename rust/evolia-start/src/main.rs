@@ -82,6 +82,7 @@ fn default_services() -> Vec<ServiceSpec> {
     vec![
         py("actions", "evolia_actions.py", &[]),
         py("evolia_run", "evolia_run.py", &[]),
+        py("supernode", "evolia_supernode.py", &["continuous", "30"]),
         py("ganache_db", "ganache_db.py", &["continuous", "30"]),
         py("dashboard", "dashboard.py", &[]),
     ]
@@ -204,8 +205,10 @@ fn main() -> Result<()> {
         started_at: chrono::Utc::now().to_rfc3339(),
     };
     let session_path = evolia_core::session_file();
-    std::fs::write(&session_path, serde_json::to_string_pretty(&session)?)?;
-    evolia_core::set_owner_only(&session_path).ok();
+    evolia_core::write_atomic(
+        &session_path,
+        serde_json::to_string_pretty(&session)?.as_bytes(),
+    )?;
 
     // Hold a Termux CPU wake lock so Android does not suspend the services
     // (no-op off-device; released by evolia-stop).
@@ -223,8 +226,7 @@ fn main() -> Result<()> {
         }
     }
 
-    std::fs::write(&pids_path, serde_json::to_string_pretty(&pids)?)?;
-    evolia_core::set_owner_only(&pids_path).ok();
+    evolia_core::write_atomic(&pids_path, serde_json::to_string_pretty(&pids)?.as_bytes())?;
 
     println!("\n{bar}");
     println!(

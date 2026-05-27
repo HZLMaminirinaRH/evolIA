@@ -72,6 +72,12 @@ args = ["evolia_run.py"]
 requires_file = "evolia_run.py"
 
 [[service]]
+name = "supernode"
+command = "python3"
+args = ["evolia_supernode.py", "continuous", "30"]
+requires_file = "evolia_supernode.py"
+
+[[service]]
 name = "ganache_db"
 command = "python3"
 args = ["ganache_db.py", "continuous", "30"]

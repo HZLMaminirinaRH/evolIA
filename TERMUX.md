@@ -79,6 +79,58 @@ First run prompts for PIN + password (+ optional fingerprint). State lives in
 `~/evolia` (override with `EVOLIA_HOME`). The dashboard prints the unified
 snapshot; logs are under `~/evolia/logs/`.
 
+## 6b. Validate the mesh (on-device)
+
+The fleet key `EVOLIA_MESH_KEY` must be the **same on every node**; with it set,
+blocks are HMAC-signed and forged/injection/malformed input is rejected and
+hardens the adaptive defense (which then relaxes once the pressure stops).
+
+### Single device — smoke test (no second phone needed)
+
+Exercises the bridge intake, defense hardening, and defense decay in one shell:
+
+```sh
+export EVOLIA_MESH_KEY="my-fleet-key"   # or leave unset to test the unsigned path
+evolia-bridge &                         # HTTP API on :8080
+SIG=$(EVOLIA_MESH_KEY="$EVOLIA_MESH_KEY" python3 - <<'PY'
+import hashlib, hmac, os
+key=os.environ.get("EVOLIA_MESH_KEY","").encode()
+print(hmac.new(key, b"peerX|7", hashlib.sha256).hexdigest() if key else "")
+PY
+)
+
+# a) Idempotent intake: re-posting the same peer keeps the latest value,
+#    it does NOT sum (no TotalV double-count).
+curl -s localhost:8080/block -d "{\"source_device\":\"peerX\",\"v_value\":7,\"sig\":\"$SIG\"}"
+curl -s localhost:8080/block -d "{\"source_device\":\"peerX\",\"v_value\":7,\"sig\":\"$SIG\"}"
+curl -s localhost:8080/mesh/total_v     # expect mesh_total_v = 7 (not 14)
+
+# b) Defense rises on injection-like input (rejected, never stored).
+curl -s localhost:8080/block -d '{"source_device":"x;DROP TABLE peers--","v_value":1}'
+curl -s localhost:8080/defense          # defense_level > 0
+
+# c) Defense relaxes after a few quiet seconds (the bridge decays on a ticker).
+sleep 6 && curl -s localhost:8080/defense   # defense_level has dropped
+```
+
+### Two devices — the real mesh (same Wi-Fi/LAN)
+
+On **each** phone: run `install-termux.sh`, export the **same** `EVOLIA_MESH_KEY`,
+then `evolia-start`. Verify:
+
+1. **Discovery** — `evolia-net` broadcasts announces; within ~30 s each node's
+   `~/evolia/evolia_peers.json` lists the other peer.
+2. **Propagation** — `mesh-sync` emits each node's signed value over UDP `:5555`;
+   the dashboard on both phones shows `mesh_total_v` equal to the **sum** of both
+   nodes' `total_v` (each peer counted once, even across many cycles).
+3. **Defense, end to end** — send a forged block (wrong/missing signature) to a
+   node's `:5555` from a laptop; it is rejected and `~/evolia/evolia_mesh_sync.log`
+   logs `bad signature ... defense=…`. Stop sending and the level decays on the
+   next quiet cycles.
+
+If a phone keeps getting `signal 9` (OEM battery manager) before these steps
+complete, see section 8 and consider Plan B (section 9).
+
 ## 7. Recording screen-input actions
 
 Screen taps cannot be captured passively on a non-rooted device, so feed them

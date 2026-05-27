@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"sync"
 	"time"
 
 	"evolia/netdisc"
@@ -84,15 +85,21 @@ func announce(self string, logf func(string)) {
 }
 
 func newLogger(path string) func(string) {
+	// Open the log once and keep it: one write per line instead of an
+	// open/write/close syscall trio per message (battery + flash on mobile).
+	f, _ := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	var mu sync.Mutex
 	return func(msg string) {
 		fmt.Println("[evolia-net] " + msg)
+		if f == nil {
+			return
+		}
 		line, _ := json.Marshal(map[string]any{
 			"timestamp": time.Now().UTC().Format(time.RFC3339),
 			"message":   msg,
 		})
-		if f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600); err == nil {
-			f.Write(append(line, '\n'))
-			f.Close()
-		}
+		mu.Lock()
+		f.Write(append(line, '\n'))
+		mu.Unlock()
 	}
 }

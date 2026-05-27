@@ -11,6 +11,14 @@ venv/
 # Go
 /go/bin/
 
+# Android
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+android/app/src/main/jniLibs/**/*.so
+
 # Evolia runtime state (never commit secrets/keys)
 .evolia_auth.json
 .evolia_session.json

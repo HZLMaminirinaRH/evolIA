@@ -9,7 +9,7 @@
 
     A  weighted digital-action score (screen, sms, photo, video)
     T  elapsed seconds in the session
-    C  motion complexity (accelerometer + gyroscope activity)
+    C  motion complexity (linear acceleration + gyroscope activity)
     M  magnetometer activity (linear term)
     L  cumulative location fixes
     W  WiFi access points in range
@@ -44,7 +44,7 @@ ACTION_RATES = {
 COEFF = {
     "actions": 0.15,       # a
     "time": 0.10,          # b
-    "complexity": 0.20,    # c  (accelerometer + gyroscope)
+    "complexity": 0.20,    # c  (linear acceleration + gyroscope)
     "magnetometer": 0.05,  # d  (linear)
     "location": 0.08,      # e
     "ble": 0.12,           # f  (Bluetooth — higher)
@@ -72,9 +72,17 @@ def action_score(action_counts: dict) -> float:
     return sum(ACTION_RATES[k] * action_counts.get(k, 0) for k in ACTION_RATES)
 
 
+# Motion normalization. sample.accelerometer is the *linear* acceleration
+# (gravity removed): ~0 at rest, peaking ~10-17 m/s² on brisk movement, so the
+# scale saturates real activity rather than a constant gravity floor. Tunable in
+# that range; keep in sync with LINEAR_ACCEL_SCALE in android/Evolve.kt.
+_LINEAR_ACCEL_SCALE = 12.0
+_GYRO_SCALE = 4.36
+
+
 def _motion(sample: SensorSample) -> float:
-    accel = min(sample.accelerometer / 19.6, 1.0)
-    gyro = min(sample.gyroscope / 4.36, 1.0)
+    accel = min(sample.accelerometer / _LINEAR_ACCEL_SCALE, 1.0)
+    gyro = min(sample.gyroscope / _GYRO_SCALE, 1.0)
     return (accel + gyro) / 2.0
 
 

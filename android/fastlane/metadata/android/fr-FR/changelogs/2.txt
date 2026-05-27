@@ -1,0 +1,6 @@
+Première version distribuée sous forme d'APK signé.
+
+* Modèle de valeur cognitive évolutif piloté par vos actions numériques et les capteurs de l'appareil.
+* Détection de mouvement affinée (accélération linéaire) et Wi-Fi/Bluetooth filtrés par force du signal.
+* Maillage pair-à-pair optionnel avec authentification cryptographique des blocs et défense adaptative.
+* Preuve de travail cognitive autonome et ancrage sur chaîne optionnels (nœud local, aucun fonds requis).

@@ -14,6 +14,7 @@ Default home is `$HOME/evolia` (matching the Termux layout and the Rust spine);
 from __future__ import annotations
 
 import os
+import tempfile
 from pathlib import Path
 
 # 1 unit of cognitive value (BTC-e) converts to this many satoshis.
@@ -29,6 +30,26 @@ def ensure_home() -> Path:
     home = evolia_home()
     home.mkdir(parents=True, exist_ok=True)
     return home
+
+
+def atomic_write_text(path: Path, text: str) -> None:
+    """Write text durably: a temp file in the same dir, flushed + fsync'd, then
+    atomically renamed into place. A crash or kill (signal 9) can never leave a
+    half-written state file — readers see either the old or the new content."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".tmp-", suffix=path.suffix)
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 # --- shared state files ------------------------------------------------------
@@ -54,12 +75,31 @@ def conversion_history() -> Path:
     return evolia_home() / "evolia_btc_conversion_history.json"
 
 
+def work_proof() -> Path:
+    """Latest cycle's cognitive proof-of-work, attached by mesh-sync to the
+    value it emits so peers can validate the increment (see go/pow)."""
+    return evolia_home() / "evolia_work_proof.json"
+
+
+def proof_queue() -> Path:
+    """Append-only queue of per-cycle work proofs awaiting on-chain anchoring.
+    The value model appends one line per value-advancing cycle; ganache_db drains
+    it and anchors each via EvoliaCore.anchorProof, so every cycle's verified
+    increment lands on-chain exactly once (full fidelity, not sampled)."""
+    return evolia_home() / "evolia_proof_queue.jsonl"
+
+
 def mesh_vault() -> Path:
     return evolia_home() / "evolia_mesh_vault"
 
 
 def deployment() -> Path:
     return evolia_home() / "evolia_deployment.json"
+
+
+def cognitive_params() -> Path:
+    """Learned cognitive parameters from the Super-peer, fused by bridge/mesh-sync."""
+    return evolia_home() / "evolia_cognitive_params.json"
 
 
 def contract_abi() -> Path:

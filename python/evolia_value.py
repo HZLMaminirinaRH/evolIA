@@ -13,14 +13,16 @@ Per cycle:
     total_v += gain
 
 So actions are the baseline (video worth the most), the evolutive V amplifies
-them, and the sensors — accelerometer, gyroscope, magnetometer, location, WiFi
-and BLE — feed V. State persists under EVOLIA_HOME and the headline figures are
-mirrored to evolia_identity_state.json for ganache_db and the dashboard.
+them, and the sensors — linear acceleration, gyroscope, magnetometer, location,
+WiFi and BLE — feed V. State persists under EVOLIA_HOME and the headline figures
+are mirrored to evolia_identity_state.json for ganache_db and the dashboard.
 """
 
 from __future__ import annotations
 
 import json
+import os
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -30,6 +32,15 @@ from evolia_sensors import SensorSample
 
 # Max value (BTC-e) a single full-activity cycle can accrue from sensors alone.
 SENSOR_FLOOR = 1.0
+
+# Default per-cycle work window (seconds) when wall-clock timing is unavailable
+# (first cycle / one-shot calls); used as the proof's dt. Mirrors the loop's
+# EVOLIA_CYCLE_SECONDS so peer-side rate caps (go/pow) match the real cadence.
+def _default_dt() -> float:
+    try:
+        return max(float(os.environ.get("EVOLIA_CYCLE_SECONDS", "5")), 0.001)
+    except ValueError:
+        return 5.0
 
 
 def _now() -> str:
@@ -44,6 +55,8 @@ class EvoliaValue:
         self.location_count = 0
         self.action_counts = {k: 0 for k in ACTION_RATES}
         self._pending_base = 0.0  # BTC-e of actions not yet folded into a cycle
+        self._pending_counts = {k: 0 for k in ACTION_RATES}  # per-cycle action deltas
+        self._last_cycle_t: float | None = None  # monotonic ts of the last cycle
 
     # --- inputs --------------------------------------------------------------
 
@@ -55,6 +68,7 @@ class EvoliaValue:
             raise ValueError("count must be >= 0")
         base = ACTION_RATES[kind] * count
         self.action_counts[kind] += count
+        self._pending_counts[kind] += count
         self._pending_base += base
         return base
 
@@ -67,9 +81,13 @@ class EvoliaValue:
         result = evolve(self.action_counts, elapsed_seconds, sample, self.location_count)
         base = self._pending_base
         self._pending_base = 0.0
+        actions = {k: c for k, c in self._pending_counts.items() if c > 0}
+        self._pending_counts = {k: 0 for k in ACTION_RATES}
 
         gain = base * (1.0 + result.v_normalized) + SENSOR_FLOOR * result.v_normalized
+        v_prev = self.total_v
         self.total_v += gain
+        self._write_work_proof(v_prev, result.v_normalized, actions)
         self.save()
 
         return {
@@ -79,6 +97,36 @@ class EvoliaValue:
             "gain": round(gain, 4),
             "total_v": round(self.total_v, 4),
         }
+
+    # --- cognitive proof-of-work ---------------------------------------------
+
+    def _write_work_proof(self, v_prev: float, v_norm: float, actions: dict) -> None:
+        """Emit the proof backing this cycle's value increment so peers can
+        validate it (see go/pow): ΔV = base(actions)·(1+v) + floor·v. dt is the
+        real inter-cycle wall time (clamped to the validator's window), so the
+        per-action rate caps bind against actual elapsed time, not a guess."""
+        now = time.monotonic()
+        if self._last_cycle_t is None:
+            dt = _default_dt()
+        else:
+            dt = now - self._last_cycle_t
+        self._last_cycle_t = now
+        dt = max(0.001, min(dt, 3600.0))
+
+        proof = {
+            "v_value": self.total_v,
+            "work": {"v_prev": v_prev, "actions": actions, "v": v_norm, "dt": dt},
+        }
+        paths.atomic_write_text(paths.work_proof(), json.dumps(proof, indent=2))
+
+        # Durably queue this cycle's proof for on-chain anchoring. Only cycles
+        # that advance the value are enqueued (a zero-gain cycle would revert
+        # EvoliaCore.anchorProof's require(gain>0)). The queue is append-only and
+        # drained by ganache_db, so every increment is anchored exactly once —
+        # the chain's provenValue tracks total_v cycle-for-cycle, not sampled.
+        if self.total_v - v_prev > 1e-9:
+            with open(paths.proof_queue(), "a") as f:
+                f.write(json.dumps(proof) + "\n")
 
     # --- persistence ---------------------------------------------------------
 
@@ -93,11 +141,12 @@ class EvoliaValue:
         }
 
     def save(self) -> None:
-        self.state_path.parent.mkdir(parents=True, exist_ok=True)
+        # Atomic writes: a signal-9 kill mid-save must never corrupt the state
+        # and lose the accumulated total_v (the headline figure).
         state = self.to_dict()
-        self.state_path.write_text(json.dumps(state, indent=2))
+        paths.atomic_write_text(self.state_path, json.dumps(state, indent=2))
         identity = self.state_path.parent / paths.identity_state().name
-        identity.write_text(json.dumps(
+        paths.atomic_write_text(identity, json.dumps(
             {
                 "total_v": state["total_v"],
                 "cycle_count": self.cycle_count,

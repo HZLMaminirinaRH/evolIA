@@ -1,0 +1,12 @@
+evolIA explore comment un téléphone peut transformer votre activité réelle et quotidienne en un signal de « valeur cognitive » personnel — entièrement sur votre appareil.
+
+Il lit les signaux de l'appareil (le mouvement via l'accélération linéaire, le Wi-Fi et le Bluetooth proches, et la localisation lorsque vous l'activez) ainsi que vos propres actions numériques, et les injecte dans un modèle de valeur évolutif. Le signal de mouvement est affiné pour suivre l'engagement réel plutôt que l'attraction constante de la gravité, et les scans d'ondes sont filtrés par force du signal afin que seuls les appareils proches comptent.
+
+Principes de conception :
+
+* Local d'abord. Le modèle de valeur tourne sur votre appareil et se dégrade gracieusement lorsqu'un capteur ou une permission est indisponible — rien ne casse hors appareil.
+* Ouvert et polyglotte. Une colonne de sécurité en Rust, un réseau maillé en Go, des services Python, et un moteur Kotlin autonome qui fonctionne seul, sans aucun binaire embarqué.
+* Prêt pour le maillage. Synchronisation pair-à-pair optionnelle avec authentification cryptographique des blocs et une défense adaptative, strictement réactive, qui ne riposte jamais.
+* Vérifiable, pas spéculatif. Une preuve de travail cognitive autonome protège le modèle de valeur. L'ancrage optionnel sur chaîne peut viser un nœud local, donc aucun fonds ni aucun compte n'est jamais requis.
+
+evolIA est un logiciel libre et open-source, publié sous licence MIT. Il ne nécessite aucun compte et fonctionne sans aucun service cloud.

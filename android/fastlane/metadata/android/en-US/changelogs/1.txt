@@ -1,0 +1,6 @@
+First public release.
+
+* Evolutive cognitive-value model driven by your digital actions and on-device sensors.
+* Sharpened motion sensing (linear acceleration) and RSSI-filtered Wi-Fi/Bluetooth.
+* Optional peer-to-peer mesh with cryptographic block authentication and adaptive defense.
+* Optional, self-contained cognitive proof-of-work and on-chain anchoring (local node, no funds required).

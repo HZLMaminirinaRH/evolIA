@@ -1,0 +1,12 @@
+evolIA explores how a phone can turn your real, everyday activity into a personal "cognitive value" signal — entirely on your device.
+
+It reads on-device signals (movement via linear acceleration, nearby Wi-Fi and Bluetooth, and location when you enable it) together with your own digital actions, and feeds them into an evolutive value model. The motion signal is sharpened to track genuine engagement rather than the constant pull of gravity, and wave scans are filtered by signal strength so only nearby devices count.
+
+Design principles:
+
+* Local-first. The value model runs on your device and degrades gracefully when a sensor or permission is unavailable — nothing breaks off-device.
+* Open and polyglot. A Rust security spine, Go mesh networking, Python services, and a self-contained Kotlin engine that runs standalone without any bundled binaries.
+* Mesh-ready. Optional peer-to-peer sync with cryptographic block authentication and an adaptive, strictly-reactive defense that never retaliates.
+* Verifiable, not speculative. A self-contained cognitive proof-of-work guards the value model. Optional on-chain anchoring can point at a local node, so no funds and no account are ever required.
+
+evolIA is free and open-source software, released under the MIT license. It needs no account and works without any cloud service.

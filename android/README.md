@@ -1,0 +1,134 @@
+# evolIA — Android app (Plan B)
+
+A native Android app whose **foreground service** supervises the prebuilt evolIA
+binaries. A foreground service with an ongoing notification is the only thing
+Android guarantees not to kill — this is the real fix for the Termux `signal 9`.
+
+> Status: CI compiles the app and runs the value-core unit tests on every push
+> (the `Android (Plan B app)` job: `:app:assembleDebug` + `:app:testDebugUnitTest`).
+> On-device behaviour (sensors, capture, on-chain anchoring) still needs a real
+> device/emulator — open it in Android Studio on a machine with the SDK + NDK.
+
+## What it does today
+
+**Phase 1 — supervise the Go binaries.** `EvoliaService` runs `evolia-net`,
+`mesh-sync` and `evolia-bridge` from the app's `nativeLibraryDir`, with
+`EVOLIA_HOME` set to the app's private files dir, restarting any that exit.
+Android only lets an app exec binaries shipped inside the APK (as `lib*.so`),
+and Go binaries are self-contained, so they drop straight in.
+
+**Phase 2 — native value engine (no Python).** The cognitive core is ported to
+Kotlin under `core/`: `Evolve` (the evolutive formula — exponential blend,
+video > photo, BLE > WiFi), `EvoliaValue` (the accumulator + persistence to the
+same `evolia_value_state.json` / `evolia_identity_state.json`), `ActionQueue`
+(the append-only `evolia_action_queue.jsonl` protocol) and `EvoliaPaths`.
+`sensors/AndroidSensors` feeds it via `SensorManager` + `WifiManager`. The
+service runs a 5s cycle loop in-process — so the value model survives without
+Termux or any interpreter (the real signal-9 fix for this layer). The pure core
+is unit-tested in `src/test/` (`EvolveTest`, runs on the JVM).
+
+`MainActivity` starts/stops the service, records a demo action, and shows the
+shared state.
+
+## Build
+
+The Gradle wrapper is committed (`./gradlew`, pinned to Gradle 8.7 — the version
+AGP 8.5.2 is tested against), so the app builds straight from the command line
+with a JDK 17 + the Android SDK, **no Android Studio required**:
+
+```sh
+cd android
+./gradlew :app:assembleDebug         # debug APK
+./gradlew :app:testDebugUnitTest     # pure value-core unit tests (JVM)
+```
+
+The supervised Go binaries are **optional**. Left out, `app/src/main/jniLibs/`
+stays empty and the app runs the pure-Kotlin value engine standalone (Phase 2) —
+this is also how F-Droid builds it: from source only, with no prebuilt blobs. To
+bundle them for the full mesh, cross-compile into `app/src/main/jniLibs/arm64-v8a/`
+first (needs the NDK):
+
+```sh
+export ANDROID_NDK_HOME=/path/to/android-ndk
+bash ../scripts/build-android-binaries.sh
+```
+
+Then install the APK, grant the notification permission, and tap **Démarrer
+Evolia**. To exercise on-device behaviour (sensors, capture, on-chain anchoring,
+the auth gate) that CI cannot, follow the step-by-step
+[device validation guide](VALIDATION.md).
+
+## Packaging for F-Droid
+
+The repo is F-Droid-ready: an MIT [`LICENSE`](../LICENSE), all-FOSS dependencies,
+no prebuilt binaries committed, and a committed Gradle wrapper. The store listing
+lives under [`fastlane/metadata/android/`](fastlane/metadata/android/) (title,
+descriptions and changelogs, `en-US` + `fr-FR`); add screenshots under
+`<locale>/images/phoneScreenshots/`. Bump `versionCode` in `app/build.gradle.kts`
+for every release so F-Droid detects the update.
+
+## Roadmap
+
+- **Phase 2b — finish the value layer. _Done._** Runtime permissions
+  (location / BLUETOOTH_SCAN / POST_NOTIFICATIONS / media) requested before
+  start; `AndroidSensors` feeds the formula real WiFi scan counts, a continuous
+  BLE device count and the last-known location fix (all permission-guarded,
+  degrade to 0/false); `MediaActionCapture` observes MediaStore and enqueues
+  `photo_taken` / `video_taken` as new photos/videos appear (the MediaWatcher
+  analog; SMS is deferred since READ_SMS is a Play-restricted permission);
+  on-chain anchoring is a web3j port of `ganache_db.py` — `EvoliaWallet`
+  generates the signing key on first run and stores it encrypted via the Android
+  Keystore (`KeystoreCrypto`, surfacing the address for gas funding), and
+  `ChainAnchor` deploys `EvoliaCore` from the bundled bytecode
+  (`assets/EvoliaCore.json`) on first launch, then calls `anchorValue` each sync
+  (value x100, status `success` with tx hash/block). It reads
+  `evolia_chain_config.json` (`rpc_url`, `chain_id`) and caches the address in
+  `evolia_deployment.json` — the same file the Python side uses. With no RPC
+  configured or no node reachable it degrades to a logged LOCAL entry, exactly
+  like Python.
+- **Phase 3 — auth/security. _Done._** A Kotlin reimplementation (no JNI) under
+  `security/`. _Crypto core (3a):_ `Argon2Phc` (Argon2id PHC hashing, the
+  evolia-auth port) and `Security` (master key = Argon2id over SHA-256(device_id),
+  ChaCha20-Poly1305 AEAD, device-bound session tokens, HMAC-SHA256 signatures —
+  the evolia-security port), backed by BouncyCastle and unit-tested on the JVM
+  mirroring the Rust suites (roundtrip, wrong-key, expiry, device-binding).
+  _Owner gate (3b):_ `AuthStore` persists the `AuthConfig` (`.evolia_auth.json`,
+  app-private), and `MainActivity` gates the service behind the three layers —
+  PIN, password, optional `BiometricPrompt` — running first-run setup when no
+  config exists. On success it derives the key from the verified password, mints
+  a device-bound session token (the "liaison directe"), and persists it so
+  `EvoliaService` passes `EVOLIA_SESSION_TOKEN` / `EVOLIA_DEVICE_ID` to the Go
+  children — the same env contract as `evolia-start`. (Argon2 verification runs
+  on the UI thread; fine for a deliberate one-shot auth.)
+- **Phase 4 — observability, mesh, BTC.** *Done (4a, dashboard):* `Dashboard`
+  (`core/`) ports `dashboard.py` — a pure aggregation of the identity state, the
+  Go mesh vault, the blockchain sync log and the bitcoin wallet/history into one
+  snapshot (cognitive power = personal + mesh + ganache), unit-tested; the home
+  screen renders it live (5 s auto-refresh). *Done (4b, mesh receive):* the Go
+  `mesh-sync` now listens on UDP `:5555` and stores peer-propagated blocks into
+  the vault (`mesh.StoreIncoming`), closing the propagation loop — blocks were
+  sent but never received before. Received blocks are marked seen so they are
+  never re-propagated (no amplification). *Done (4c, BTC):* `BitcoinBridge`
+  (`core/`) ports `evolia_bitcoin.py` — `vToSat` (value→satoshis, clamped to the
+  per-tx bounds) plus wallet/conversion-history persistence to the same files;
+  the home screen has a **Convertir V → BTC** button that queues a conversion of
+  the current value, and the dashboard's BITCOIN line reflects it. Unit-tested
+  (clamping, sat conversions, persist+reload). Phase 4 is complete.
+- **Phase 5 — evolutive defense + signed propagation. _Done._** Couples the
+  security spine to passive propagation, the same model in all three languages:
+  the more hostile input evolIA absorbs, the harder it defends (a bounded attack
+  buffer whose level rises and decays). Rust `evolia-security::evolutive`
+  (`a_global` = A_evo + P_free − D_evo, `AdaptiveDefense`, injection detector),
+  Go `defense` + HMAC-signed mesh blocks (`EVOLIA_MESH_KEY`) with defense-gated
+  intake on the bridge/mesh, and Kotlin `AdaptiveDefense`. The fleet key is
+  derived from the owner password alone (`Security.deriveFleetKey`, fixed salt),
+  so every device of the same owner signs/verifies each other's blocks;
+  `MainActivity` persists it and `EvoliaService` passes `EVOLIA_MESH_KEY` to the
+  Go children. Strictly reactive — detect, reject, harden, record; never
+  retaliates. Unit-tested in every layer.
+
+The Kotlin core mirrors `evolia_evolve.py` line-for-line; reference outputs
+(at-rest `V=0`, full-activity `V≈0.6109`, BLE > WiFi) match the Python core.
+
+The shared `EVOLIA_HOME` file protocol stays the contract between every piece,
+exactly as on Termux — so phases can land incrementally.

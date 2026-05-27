@@ -39,6 +39,8 @@ def test_artifact_present_and_valid():
     assert art["bytecode"].startswith("0x") and len(art["bytecode"]) > 4
     fns = {e.get("name") for e in art["abi"] if e.get("type") == "function"}
     assert {"anchorValue", "blockCount", "totalCognitiveValue"} <= fns
+    # The verified proof-of-work path must be present on-chain.
+    assert {"anchorProof", "computeGain", "provenValue", "provenBlockCount"} <= fns
 
 
 def test_anchor_on_real_evm():
@@ -64,6 +66,99 @@ def test_anchor_on_real_evm():
     ganache_db.anchor_on_contract(w3, contract, account, 5.0)
     assert contract.functions.blockCount().call() == 2
     assert contract.functions.totalCognitiveValue().call() == int(12.34 * 100) + 500
+
+
+def test_anchor_proof_recomputes_and_rejects_forgery():
+    if not HAVE_WEB3:
+        print("   (SKIP: web3/eth-tester not installed)")
+        return
+
+    w3 = Web3(EthereumTesterProvider())
+    account = w3.eth.accounts[0]
+    art = _artifact()
+
+    deployer = w3.eth.contract(abi=art["abi"], bytecode=art["bytecode"])
+    receipt = w3.eth.wait_for_transaction_receipt(deployer.constructor().transact({"from": account}))
+    contract = w3.eth.contract(address=receipt["contractAddress"], abi=art["abi"])
+
+    # computeGain mirrors the off-chain formula: screen×10 + photo×2 at v=0.4 ->
+    # base = 10·0.05 + 2·2.50 = 5.5; ΔV = 5.5·1.4 + 1·0.4 = 8.1 -> 810 centi.
+    assert contract.functions.computeGain(10, 0, 2, 0, 400).call() == 810
+
+    # Honest proof through the actual ganache_db path: screen_input×40 at v=0 over
+    # 5s -> 40·0.05 = 2.0 BTC-e = 200 centi. The chain recomputes it.
+    entry = ganache_db.anchor_proof_on_contract(w3, contract, account, {"actions": {"screen_input": 40}, "v": 0.0, "dt": 5.0})
+    assert entry["status"] == "success" and entry["mode"] == "proven"
+    assert entry["proven_value_centi"] == 200  # the value is the on-chain sum, not declared
+    assert contract.functions.provenValue().call() == 200
+    assert contract.functions.provenBlockCount().call() == 1
+
+    # A second honest proof accumulates: photo_taken×1 at v=0 -> 2.5 BTC-e = 250.
+    ganache_db.anchor_proof_on_contract(w3, contract, account, {"actions": {"photo_taken": 1}, "v": 0.0, "dt": 5.0})
+    assert contract.functions.provenValue().call() == 450
+
+    # A forged proof — 1000 videos in 5s (cap is 2/s) — reverts on-chain and does
+    # not move the proven value: fabricating BTC-e is impossible at the source.
+    raised = False
+    try:
+        ganache_db.anchor_proof_on_contract(w3, contract, account, {"actions": {"video_taken": 1000}, "v": 0.0, "dt": 5.0})
+    except Exception:
+        raised = True
+    assert raised, "forged work must revert on-chain"
+    assert contract.functions.provenValue().call() == 450
+
+
+def test_proof_queue_drains_to_chain_full_fidelity():
+    if not HAVE_WEB3:
+        print("   (SKIP: web3/eth-tester not installed)")
+        return
+
+    import os
+    import tempfile
+
+    import evolia_paths as paths
+
+    os.environ["EVOLIA_HOME"] = tempfile.mkdtemp()
+
+    w3 = Web3(EthereumTesterProvider())
+    account = w3.eth.accounts[0]
+    w3.eth.default_account = account
+    art = _artifact()
+    deployer = w3.eth.contract(abi=art["abi"], bytecode=art["bytecode"])
+    receipt = w3.eth.wait_for_transaction_receipt(deployer.constructor().transact({"from": account}))
+    contract = w3.eth.contract(address=receipt["contractAddress"], abi=art["abi"])
+
+    # Make ganache_db anchor against this in-process EVM.
+    orig_connect = ganache_db._connect
+    ganache_db._connect = lambda: (w3, contract)
+    try:
+        paths.ensure_home()
+        # Three value-advancing cycles: screen×40 -> 200, photo×1 -> 250,
+        # sms×1 -> 120 centi. Each is appended exactly as the value model does.
+        proofs = [
+            {"v_value": 2.0, "work": {"v_prev": 0.0, "actions": {"screen_input": 40}, "v": 0.0, "dt": 5.0}},
+            {"v_value": 4.5, "work": {"v_prev": 2.0, "actions": {"photo_taken": 1}, "v": 0.0, "dt": 5.0}},
+            {"v_value": 5.7, "work": {"v_prev": 4.5, "actions": {"sms_sent": 1}, "v": 0.0, "dt": 5.0}},
+        ]
+        with open(paths.proof_queue(), "a") as f:
+            for p in proofs:
+                f.write(json.dumps(p) + "\n")
+
+        entry = ganache_db.sync_once()
+        assert entry["status"] == "success", entry
+        assert entry["anchored"] == 3 and entry["requeued"] == 0
+        # provenValue is the exact on-chain sum of the three recomputed increments.
+        assert contract.functions.provenValue().call() == 200 + 250 + 120
+        assert contract.functions.provenBlockCount().call() == 3
+        # The queue is fully drained: every cycle anchored exactly once.
+        assert ganache_db.take_proof_batch() == []
+
+        # A second sync with no new proofs is a clean no-op (no double-count).
+        entry2 = ganache_db.sync_once()
+        assert entry2["status"] == "local"
+        assert contract.functions.provenValue().call() == 570
+    finally:
+        ganache_db._connect = orig_connect
 
 
 if __name__ == "__main__":
