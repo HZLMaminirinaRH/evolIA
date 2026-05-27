@@ -1,5 +1,6 @@
 package com.evolia.app.chat
 
+import com.evolia.app.core.ActionQueue
 import com.evolia.app.core.EvoliaPaths
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -49,6 +50,33 @@ class ChatManagerTest {
     fun sendToInvalidBundleFails() {
         val (alice, _) = manager()
         assertFalse(alice.send("not-a-valid-bundle", "hi"))
+    }
+
+    @Test
+    fun sendingRecordsSmsSentValueAction() {
+        val home = Files.createTempDirectory("evolia-chat").toFile()
+        val paths = EvoliaPaths(home)
+        val alice = ChatManager(ChatIdentity.generate(), ChatStore(paths)) {
+            ActionQueue.enqueue(paths, "sms_sent")
+        }
+        val bobPaths = EvoliaPaths(Files.createTempDirectory("evolia-chat-b").toFile())
+        val bob = ChatManager(ChatIdentity.generate(), ChatStore(bobPaths))
+
+        assertTrue(alice.send(bob.myBundleHex, "salama"))
+        assertEquals("a sent message is one sms_sent action", listOf("sms_sent" to 1), ActionQueue.drain(paths))
+
+        // A rejected send (over cap) records no value.
+        alice.send(bob.myBundleHex, "x".repeat(ChatManager.MAX_MESSAGE_CHARS + 1))
+        assertTrue(ActionQueue.drain(paths).isEmpty())
+    }
+
+    @Test
+    fun enforcesMiniMessageLengthCap() {
+        val (alice, _) = manager()
+        val (bob, _) = manager()
+        assertFalse("empty is rejected", alice.send(bob.myBundleHex, ""))
+        assertFalse("over 480 chars is rejected", alice.send(bob.myBundleHex, "x".repeat(ChatManager.MAX_MESSAGE_CHARS + 1)))
+        assertTrue("exactly 480 chars is accepted", alice.send(bob.myBundleHex, "x".repeat(ChatManager.MAX_MESSAGE_CHARS)))
     }
 
     @Test

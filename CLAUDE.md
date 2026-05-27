@@ -216,7 +216,12 @@ Python `evolia_paths`, Go `mesh.Home`), so the services communicate through file
   drops its in-memory view when evolIA is not running. Nothing confidential lingers on disk or in
   memory past a stop. The identity key and contacts are kept (not messages; the device stays
   reachable). On-disk the relayed bodies are sealed anyway — plaintext exists only transiently in
-  the app during display.
+  the app during display. Messages are **mini-messages capped at 480 characters**
+  (`ChatManager.MAX_MESSAGE_CHARS`). Composing one is itself a **valued digital action**: each sent
+  message records an `sms_sent` action (via `ActionQueue`) on the sender's own device, so chat
+  engagement feeds `V` → BTC-e like screen/photo/video activity (received messages are not valued —
+  they were the peer's action on their device). WiFi/LAN transport is live (Phase 1, UDP); Bluetooth
+  is Phase 2 (the outbox/inbox abstraction accepts it without protocol changes).
 - The **Super-peer role** is a central coordinating node (asymmetric, not hierarchical) that:
   - **Reads** peer blocks from the mesh vault (carrying their cognitive work proofs)
   - **Learns** patterns: which actions/sensor mixes achieve high `v_normalized`, user engagement,

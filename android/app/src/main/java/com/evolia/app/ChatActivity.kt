@@ -17,6 +17,7 @@ import androidx.appcompat.app.AppCompatActivity
 import com.evolia.app.chat.ChatIdentityStore
 import com.evolia.app.chat.ChatManager
 import com.evolia.app.chat.ChatStore
+import com.evolia.app.core.ActionQueue
 import com.evolia.app.core.EvoliaPaths
 import java.io.File
 
@@ -51,7 +52,11 @@ class ChatActivity : AppCompatActivity() {
 
         val paths = EvoliaPaths(File(filesDir, "evolia"))
         store = ChatStore(paths)
-        manager = ChatManager(ChatIdentityStore(paths).loadOrCreate(), store)
+        // Each sent message is a valued digital action (sms_sent), drained by the
+        // running value loop into V -> BTC-e — chat engagement is rewarded too.
+        manager = ChatManager(ChatIdentityStore(paths).loadOrCreate(), store) {
+            ActionQueue.enqueue(paths, "sms_sent")
+        }
 
         val myId = TextView(this).apply {
             text = getString(R.string.chat_my_identity).format(manager.myFingerprint)
@@ -71,7 +76,10 @@ class ChatActivity : AppCompatActivity() {
         log = TextView(this)
         val scroll = ScrollView(this).apply { addView(log) }
 
-        val input = EditText(this).apply { hint = getString(R.string.chat_message_hint) }
+        val input = EditText(this).apply {
+            hint = getString(R.string.chat_message_hint)
+            filters = arrayOf(android.text.InputFilter.LengthFilter(ChatManager.MAX_MESSAGE_CHARS))
+        }
         val send = Button(this).apply {
             text = getString(R.string.chat_send)
             setOnClickListener { sendMessage(input) }

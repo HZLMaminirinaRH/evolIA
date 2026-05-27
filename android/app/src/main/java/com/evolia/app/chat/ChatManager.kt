@@ -10,9 +10,15 @@ import java.util.UUID
  * encryption/authentication happens here.
  *
  * Constructed with an explicit ChatIdentity so it unit-tests on the JVM; the app
- * supplies ChatIdentityStore.loadOrCreate() (Keystore-backed).
+ * supplies ChatIdentityStore.loadOrCreate() (Keystore-backed). [onMessageSent]
+ * lets the app record the value of composing a message (a digital action that
+ * feeds V -> BTC-e) without coupling this class to the action queue or paths.
  */
-class ChatManager(private val identity: ChatIdentity, private val store: ChatStore) {
+class ChatManager(
+    private val identity: ChatIdentity,
+    private val store: ChatStore,
+    private val onMessageSent: () -> Unit = {},
+) {
 
     val myBundleHex: String get() = identity.publicBundleHex()
     val myFingerprint: String get() = identity.fingerprint()
@@ -23,8 +29,10 @@ class ChatManager(private val identity: ChatIdentity, private val store: ChatSto
     }
 
     /** Seal [text] for the holder of [recipientBundleHex] and queue it for relay.
-     *  Returns false if the bundle is not a valid chat identity. */
+     *  Returns false if the bundle is invalid or the text is empty / over the
+     *  mini-message length cap (MAX_MESSAGE_CHARS). */
     fun send(recipientBundleHex: String, text: String): Boolean {
+        if (text.isEmpty() || text.length > MAX_MESSAGE_CHARS) return false
         val to = ChatIdentity.fingerprintFromBundle(recipientBundleHex) ?: return false
         val body = identity.seal(recipientBundleHex, text.toByteArray())
         store.enqueue(
@@ -36,6 +44,10 @@ class ChatManager(private val identity: ChatIdentity, private val store: ChatSto
                 body = body,
             ),
         )
+        // Composing a message is a valued digital action (like sending a text),
+        // counted on the sender's own device — so chat engagement contributes to
+        // V -> BTC-e just like screen/photo/video activity.
+        onMessageSent()
         return true
     }
 
@@ -52,4 +64,9 @@ class ChatManager(private val identity: ChatIdentity, private val store: ChatSto
     fun contacts(): List<ChatStore.Contact> = store.contacts()
 
     fun addContact(name: String, bundleHex: String) = store.addContact(name, bundleHex)
+
+    companion object {
+        /** Mini-messages only: a chat line is capped at 480 characters. */
+        const val MAX_MESSAGE_CHARS = 480
+    }
 }
