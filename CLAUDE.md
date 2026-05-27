@@ -76,8 +76,9 @@ android/                 Plan B: Kotlin app — foreground service supervising t
                          (core/: Evolve, EvoliaValue, ActionQueue, EvoliaPaths;
                          sensors/AndroidSensors; sensors/CompassView+CompassMath +
                          CompassActivity: a visual compass off the rotation-vector
-                         sensor — accel+gyro+magneto fusion — purely additive UX,
-                         the gyroscope already feeds V). Mirrors evolia_evolve.py so it
+                         sensor — accel+gyro+magneto fusion — plus a live magnetic-
+                         field readout (µT); purely additive UX, the gyroscope and
+                         magnetometer already feed V). Mirrors evolia_evolve.py so it
                          runs without Python (the signal-9 fix). Built in Android
                          Studio, not in CI (no Android SDK here); see android/README.md.
                          chat/: end-to-end peer messaging — ChatIdentity (Ed25519 sign

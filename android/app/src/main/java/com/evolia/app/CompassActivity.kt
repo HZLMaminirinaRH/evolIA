@@ -25,8 +25,10 @@ class CompassActivity : AppCompatActivity(), SensorEventListener {
 
     private lateinit var sensorManager: SensorManager
     private var rotationSensor: Sensor? = null
+    private var magnetometer: Sensor? = null
     private lateinit var compass: CompassView
     private lateinit var readout: TextView
+    private lateinit var magneticReadout: TextView
     private val rotationMatrix = FloatArray(9)
     private val orientation = FloatArray(3)
 
@@ -36,11 +38,18 @@ class CompassActivity : AppCompatActivity(), SensorEventListener {
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
         rotationSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
             ?: sensorManager.getDefaultSensor(Sensor.TYPE_GEOMAGNETIC_ROTATION_VECTOR)
+        magnetometer = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
 
         compass = CompassView(this)
         readout = TextView(this).apply {
             gravity = Gravity.CENTER
             textSize = 22f
+        }
+        // The magnetometer reading is shown live because it also feeds V.
+        magneticReadout = TextView(this).apply {
+            gravity = Gravity.CENTER
+            textSize = 16f
+            alpha = 0.85f
         }
         val hint = TextView(this).apply {
             gravity = Gravity.CENTER
@@ -52,6 +61,7 @@ class CompassActivity : AppCompatActivity(), SensorEventListener {
                 orientation = LinearLayout.VERTICAL
                 setPadding(40, 40, 40, 40)
                 addView(readout)
+                addView(magneticReadout)
                 addView(
                     compass,
                     LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0).apply { weight = 1f },
@@ -66,6 +76,9 @@ class CompassActivity : AppCompatActivity(), SensorEventListener {
         rotationSensor?.let {
             sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
         }
+        magnetometer?.let {
+            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
+        }
     }
 
     override fun onPause() {
@@ -74,18 +87,21 @@ class CompassActivity : AppCompatActivity(), SensorEventListener {
     }
 
     override fun onSensorChanged(event: SensorEvent) {
-        if (event.sensor.type != Sensor.TYPE_ROTATION_VECTOR &&
-            event.sensor.type != Sensor.TYPE_GEOMAGNETIC_ROTATION_VECTOR
-        ) {
-            return
+        when (event.sensor.type) {
+            Sensor.TYPE_ROTATION_VECTOR, Sensor.TYPE_GEOMAGNETIC_ROTATION_VECTOR -> {
+                SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
+                SensorManager.getOrientation(rotationMatrix, orientation)
+                val deg = CompassMath.azimuthDegrees(orientation[0].toDouble())
+                compass.setAzimuth(deg)
+                val cardinals = resources.getStringArray(R.array.compass_cardinals)
+                readout.text = getString(R.string.compass_readout)
+                    .format(deg.toInt(), cardinals[CompassMath.cardinalIndex(deg)])
+            }
+            Sensor.TYPE_MAGNETIC_FIELD -> {
+                magneticReadout.text = getString(R.string.compass_magnetic)
+                    .format(CompassMath.magnitude(event.values))
+            }
         }
-        SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
-        SensorManager.getOrientation(rotationMatrix, orientation)
-        val deg = CompassMath.azimuthDegrees(orientation[0].toDouble())
-        compass.setAzimuth(deg)
-        val cardinals = resources.getStringArray(R.array.compass_cardinals)
-        readout.text = getString(R.string.compass_readout)
-            .format(deg.toInt(), cardinals[CompassMath.cardinalIndex(deg)])
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}

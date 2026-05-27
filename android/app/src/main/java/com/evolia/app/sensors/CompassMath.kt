@@ -25,4 +25,16 @@ object CompassMath {
         val d = ((degrees % 360.0) + 360.0) % 360.0
         return ((d + 22.5) / 45.0).toInt() % 8
     }
+
+    /**
+     * Euclidean magnitude of a sensor vector's first up-to-3 components — for
+     * TYPE_MAGNETIC_FIELD this is the magnetic field strength in microtesla,
+     * computed exactly like AndroidSensors (the same value that feeds V).
+     */
+    fun magnitude(values: FloatArray): Double {
+        var sumSq = 0.0
+        val n = minOf(3, values.size)
+        for (i in 0 until n) sumSq += values[i].toDouble() * values[i]
+        return kotlin.math.sqrt(sumSq)
+    }
 }

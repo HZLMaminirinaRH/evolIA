@@ -70,7 +70,8 @@
     <string name="btn_compass">Famantarana avaratra</string>
     <string name="compass_title">Famantarana avaratra</string>
     <string name="compass_readout">Lalana: %1$d° %2$s</string>
-    <string name="compass_hint">Avadiho ny finday mba hahitana ny lalana — miakatra ny sanda amin\'ny gyroscope rehefa mandeha i evolIA.</string>
+    <string name="compass_magnetic">Saha magnetika: %.1f µT</string>
+    <string name="compass_hint">Avadiho ny finday mba hahitana ny lalana — samy mamahana ny sandanao ny gyroscope sy ny saha magnetika rehefa mandeha i evolIA.</string>
     <string name="compass_unavailable">Tsy misy famantarana avaratra amin\'ity finday ity.</string>
     <string-array name="compass_cardinals">
         <item>Av</item>

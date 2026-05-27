@@ -70,7 +70,8 @@
     <string name="btn_compass">Boussole</string>
     <string name="compass_title">Boussole</string>
     <string name="compass_readout">Cap : %1$d° %2$s</string>
-    <string name="compass_hint">Tournez votre téléphone pour vous orienter — la valeur s\'accumule via le gyroscope quand evolIA tourne.</string>
+    <string name="compass_magnetic">Champ magnétique : %.1f µT</string>
+    <string name="compass_hint">Tournez votre téléphone pour vous orienter — le gyroscope et le champ magnétique alimentent tous deux votre valeur quand evolIA tourne.</string>
     <string name="compass_unavailable">Boussole indisponible sur cet appareil.</string>
     <string-array name="compass_cardinals">
         <item>N</item>

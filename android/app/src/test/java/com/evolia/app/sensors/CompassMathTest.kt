@@ -34,4 +34,13 @@ class CompassMathTest {
         assertEquals(0, CompassMath.cardinalIndex(11.0))
         assertEquals(1, CompassMath.cardinalIndex(23.0))  // crosses into NE at 22.5
     }
+
+    @Test
+    fun magnitudeIsEuclideanOverThreeAxes() {
+        assertEquals(5.0, CompassMath.magnitude(floatArrayOf(3f, 4f)), 1e-6)
+        assertEquals(0.0, CompassMath.magnitude(floatArrayOf(0f, 0f, 0f)), 1e-6)
+        assertEquals(13.0, CompassMath.magnitude(floatArrayOf(3f, 4f, 12f)), 1e-6)
+        // Extra components past the first three are ignored (matches AndroidSensors).
+        assertEquals(13.0, CompassMath.magnitude(floatArrayOf(3f, 4f, 12f, 99f)), 1e-6)
+    }
 }

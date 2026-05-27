@@ -1,4 +1,4 @@
 Nouveautés : un chat pair-à-pair chiffré qui fonctionne hors-ligne via Bluetooth
-(et Wi-Fi/LAN), plus une boussole visuelle pour garder le nord pendant que votre
-activité accumule de la valeur. evolIA tourne désormais en arrière-plan jusqu'à
+(et Wi-Fi/LAN), plus une boussole visuelle (avec lecture du champ magnétique en
+direct) pour garder le nord pendant que votre activité accumule de la valeur. evolIA tourne désormais en arrière-plan jusqu'à
 ce que vous appuyiez sur Arrêter, et écrire un message compte comme activité valorisée.
