@@ -6,6 +6,8 @@
     <string name="btn_stop">Arrêter</string>
     <string name="btn_actions">Actions: V</string>
     <string name="btn_convert">Valeurs V → BTC-e</string>
+    <string name="btn_transfer">Transférer BTC-e</string>
+    <string name="btn_receive">Recevoir BTC-e</string>
     <string name="btn_refresh">F5</string>
 
     <!-- Auth messages -->
@@ -53,6 +55,28 @@
 
     <!-- Dashboard -->
     <string name="dashboard_wallet">Wallet ETH (à financer en gas):</string>
+    <string name="dashboard_onchain_balance">BTC-e on-chain (transférable) : %.2f</string>
+    <string name="dashboard_onchain_help">(*)</string>
+
+    <!-- Échange BTC-e on-chain -->
+    <string name="msg_auth_needed">Configurez d\'abord l\'auth propriétaire : appuyez sur Démarrer Evolia.</string>
+    <string name="transfer_title">Transférer du BTC-e (on-chain)</string>
+    <string name="transfer_to_hint">Adresse du destinataire (0x…)</string>
+    <string name="transfer_amount_hint">Montant (BTC-e)</string>
+    <string name="transfer_invalid">Adresse ou montant invalide.</string>
+    <string name="msg_transfer_sending">Envoi du transfert on-chain…</string>
+    <string name="msg_transfer_success">%1$.2f BTC-e envoyés à %2$s</string>
+    <string name="msg_transfer_local">Non réglé on-chain : %1$s</string>
+    <string name="msg_transfer_failed">Échec du transfert : %1$s</string>
+    <string name="receive_preparing">Préparation de votre adresse…</string>
+    <string name="receive_unavailable">Adresse indisponible (crypto on-chain en échec).</string>
+    <string name="receive_title">Recevoir du BTC-e</string>
+    <string name="receive_explain">Partagez cette adresse — les pairs y transfèrent du BTC-e et votre solde se met à jour automatiquement on-chain :\n\n%1$s</string>
+    <string name="receive_share">Partager</string>
+    <string name="guide_title">Échange on-chain — ce qu\'il faut faire</string>
+    <string name="guide_body">Un échange de BTC-e on-chain n\'est réglé qu\'une fois qu\'un nœud de la blockchain a ordonné et vérifié votre transfert. Pour pouvoir échanger :\n\n1. Configurez un nœud — renseignez rpc_url (et chain_id) dans evolia_chain_config.json, dans le dossier d\'evolIA.\n\n2. Approvisionnez votre adresse en gas — envoyez un peu de jeton natif à l\'adresse ci-dessous pour que vos transactions paient le gas.\n\n3. Démarrez evolIA — il déploie le contrat une fois et ancre votre valeur prouvée comme solde transférable on-chain.\n\n4. Puis Transférer vers l\'adresse d\'un autre propriétaire. La réception est automatique : votre solde augmente quand un pair paie votre adresse.\n\nSans nœud joignable, un transfert reste LOCAL (non réglé).</string>
+    <string name="guide_address_label">Votre adresse à financer (gas) :</string>
+    <string name="guide_address_pending">(apparaît après la première activité on-chain)</string>
 
     <!-- Sans-fil + arrière-plan -->
     <string name="chat_radios_title">Activer le sans-fil</string>

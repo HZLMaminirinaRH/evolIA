@@ -20,6 +20,8 @@ class EvoliaPaths(val home: File) {
     val meshVault: File get() = File(home, "evolia_mesh_vault")
     val bitcoinWallet: File get() = File(home, "evolia_bitcoin_wallet.json")
     val conversionHistory: File get() = File(home, "evolia_btc_conversion_history.json")
+    val transferHistory: File get() = File(home, "evolia_transfer_history.jsonl")
+    val onchainBalance: File get() = File(home, "evolia_onchain_balance.json")
     val chatIdentityKey: File get() = File(home, "evolia_chat_identity.key")
     val chatOutbox: File get() = File(home, "evolia_chat_outbox.jsonl")
     val chatInbox: File get() = File(home, "evolia_chat_inbox.jsonl")

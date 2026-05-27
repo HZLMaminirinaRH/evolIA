@@ -6,6 +6,8 @@
     <string name="btn_stop">AÀTO!</string>
     <string name="btn_actions">ASA @ FINDAY (V)</string>
     <string name="btn_convert">EZAKA BTC-E VITA!</string>
+    <string name="btn_transfer">MANDEFA BTC-e</string>
+    <string name="btn_receive">MANDRAY BTC-e</string>
     <string name="btn_refresh">F5</string>
 
     <!-- Auth messages -->
@@ -53,6 +55,28 @@
 
     <!-- Dashboard -->
     <string name="dashboard_wallet">Valan\'ETH (satria misy gas):</string>
+    <string name="dashboard_onchain_balance">BTC-e on-chain (azo alefa): %.2f</string>
+    <string name="dashboard_onchain_help">(*)</string>
+
+    <!-- Fanakalozana BTC-e on-chain -->
+    <string name="msg_auth_needed">Ametraho aloha ny fanamarinana tompony: tsindrio NDAO! Evolia.</string>
+    <string name="transfer_title">Mandefa BTC-e (on-chain)</string>
+    <string name="transfer_to_hint">Adiresin\'ny mpandray (0x…)</string>
+    <string name="transfer_amount_hint">Habetsahana (BTC-e)</string>
+    <string name="transfer_invalid">Adiresy na habetsahana diso.</string>
+    <string name="msg_transfer_sending">Mandefa transfert on-chain…</string>
+    <string name="msg_transfer_success">Nalefa %1$.2f BTC-e ho an\'i %2$s</string>
+    <string name="msg_transfer_local">Tsy voalamina on-chain: %1$s</string>
+    <string name="msg_transfer_failed">Tsy nahomby ny fandefasana: %1$s</string>
+    <string name="receive_preparing">Manomana ny adiresinao…</string>
+    <string name="receive_unavailable">Tsy hita ny adiresy (tsy nety ny crypto on-chain).</string>
+    <string name="receive_title">Mandray BTC-e</string>
+    <string name="receive_explain">Zarao ity adiresy ity — mandefa BTC-e ao ny mpiara-belona ary mihavao ho azy ny solanao on-chain:\n\n%1$s</string>
+    <string name="receive_share">Zarao</string>
+    <string name="guide_title">Fanakalozana on-chain — izay tokony hatao</string>
+    <string name="guide_body">Ny fanakalozana BTC-e on-chain dia voalamina rehefa avy nandamina sy nanamarina ny fandefasanao ny node-n\'ny blockchain. Mba hahafahana manakalo:\n\n1. Ametraho node — fenoy ny rpc_url (sy chain_id) ao amin\'ny evolia_chain_config.json, ao amin\'ny lahatahirin\'i evolIA.\n\n2. Asio gas ny adiresinao — andefaso vola natural kely amin\'ny adiresy etsy ambany mba handoavan\'ny tx-nao ny gas.\n\n3. Alefaso i evolIA — mametraka ny contract indray mandeha izy ary manorina ny sandanao voaporofo ho solanao azo alefa on-chain.\n\n4. Avy eo Mandefa amin\'ny adiresin\'ny tompony hafa. Ho azy ny fandraisana: mitombo ny solanao rehefa misy mpiara-belona mandoa amin\'ny adiresinao.\n\nRaha tsy misy node azo idirana, mijanona ho LOCAL (tsy voalamina) ny fandefasana.</string>
+    <string name="guide_address_label">Ny adiresinao hofenoina (gas):</string>
+    <string name="guide_address_pending">(miseho aorian\'ny asa on-chain voalohany)</string>
 
     <!-- Tariby tsy misy + ambadika -->
     <string name="chat_radios_title">Velomy ny tariby tsy misy</string>

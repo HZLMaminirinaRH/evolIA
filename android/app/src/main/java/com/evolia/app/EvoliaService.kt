@@ -121,6 +121,9 @@ class EvoliaService : Service() {
                 val nowMs = System.currentTimeMillis()
                 if (nowMs - lastAnchorMs >= ANCHOR_MS) {
                     chain.syncOnce()
+                    // Cache the on-chain proven balance so the dashboard can show
+                    // what's transferable without a main-thread network call.
+                    chain.refreshBalance()
                     lastAnchorMs = nowMs
                 }
                 delay(CYCLE_MS)

@@ -6,6 +6,8 @@
     <string name="btn_stop">Stop</string>
     <string name="btn_actions">Actions: V</string>
     <string name="btn_convert">Values V → BTC-e</string>
+    <string name="btn_transfer">Transfer BTC-e</string>
+    <string name="btn_receive">Receive BTC-e</string>
     <string name="btn_refresh">F5</string>
 
     <!-- Auth messages -->
@@ -53,6 +55,28 @@
 
     <!-- Dashboard -->
     <string name="dashboard_wallet">ETH wallet (fund with gas):</string>
+    <string name="dashboard_onchain_balance">On-chain BTC-e (transferable): %.2f</string>
+    <string name="dashboard_onchain_help">(*)</string>
+
+    <!-- On-chain BTC-e exchange -->
+    <string name="msg_auth_needed">Set up owner auth first: press Start Evolia.</string>
+    <string name="transfer_title">Transfer BTC-e (on-chain)</string>
+    <string name="transfer_to_hint">Recipient address (0x…)</string>
+    <string name="transfer_amount_hint">Amount (BTC-e)</string>
+    <string name="transfer_invalid">Invalid address or amount.</string>
+    <string name="msg_transfer_sending">Sending on-chain transfer…</string>
+    <string name="msg_transfer_success">Sent %1$.2f BTC-e to %2$s</string>
+    <string name="msg_transfer_local">Not settled on-chain: %1$s</string>
+    <string name="msg_transfer_failed">Transfer failed: %1$s</string>
+    <string name="receive_preparing">Preparing your address…</string>
+    <string name="receive_unavailable">Address unavailable (on-chain crypto failed).</string>
+    <string name="receive_title">Receive BTC-e</string>
+    <string name="receive_explain">Share this address — peers transfer BTC-e to it and your balance updates automatically on-chain:\n\n%1$s</string>
+    <string name="receive_share">Share</string>
+    <string name="guide_title">On-chain exchange — what to do</string>
+    <string name="guide_body">An on-chain BTC-e exchange is only settled once a blockchain node has ordered and verified your transfer. To be able to exchange:\n\n1. Configure a node — set rpc_url (and chain_id) in evolia_chain_config.json inside evolIA\'s home folder.\n\n2. Fund your address with gas — send a little native coin to the address below so your transactions can pay gas.\n\n3. Start evolIA — it deploys the contract once and anchors your proven value as your transferable on-chain balance.\n\n4. Then Transfer to another owner\'s address. Receiving is automatic: your balance grows when a peer pays your address.\n\nWithout a reachable node a transfer stays LOCAL (not settled).</string>
+    <string name="guide_address_label">Your funding address (gas):</string>
+    <string name="guide_address_pending">(appears after the first on-chain activity)</string>
 
     <!-- Wireless prompts + background -->
     <string name="chat_radios_title">Turn on wireless</string>

@@ -91,6 +91,16 @@ android/                 Plan B: Kotlin app — foreground service supervising t
                          peer messaging; ChatIntake (transport-agnostic receive
                          pipeline, Kotlin mirror of go/chat) + BluetoothFraming
                          (length-prefixed frames) are pure/JVM-tested.
+                         chain/: on-chain BTC-e via web3j — EvoliaWallet (a device
+                         Ethereum key, encrypted at rest in the Android Keystore) +
+                         ChainAnchor (deploys/anchors EvoliaCore, plus transfer() /
+                         refreshBalance() for owner-to-owner payments). MainActivity
+                         adds Transfer + Receive buttons (Transfer gated by the strict
+                         owner auth; Receive just shows/shares the address — receiving
+                         is passive) and shows the transferable on-chain balance with a
+                         clickable (*) -> ExchangeGuideActivity (the explicit on-chain
+                         prerequisites: RPC, gas, reachable node). The bundled
+                         assets/EvoliaCore.json mirrors contracts/EvoliaCore.json.
 ```
 
 On-chain anchoring is optional and self-contained: `contracts/EvoliaCore.json`

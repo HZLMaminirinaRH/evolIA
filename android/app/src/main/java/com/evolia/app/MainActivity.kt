@@ -13,6 +13,11 @@ import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
 import android.text.InputType
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.method.LinkMovementMethod
+import android.text.style.ClickableSpan
+import android.view.View
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -24,6 +29,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
+import com.evolia.app.chain.ChainAnchor
 import com.evolia.app.core.ActionQueue
 import com.evolia.app.core.BitcoinBridge
 import com.evolia.app.core.Dashboard
@@ -115,6 +121,18 @@ class MainActivity : AppCompatActivity() {
                 updateStatus()
             }
         }
+        // On-chain BTC-e transfer between owners — gated by the strict owner auth
+        // (PIN/password/biometric), settled on-chain so it can never double-spend.
+        val transfer = Button(this).apply {
+            text = getString(R.string.btn_transfer)
+            setOnClickListener { authenticate(allowSetup = false) { promptTransfer() } }
+        }
+        // Receiving is passive on-chain (your balance grows when a peer pays your
+        // address); this just shows/shares that address — no auth needed, it's public.
+        val receive = Button(this).apply {
+            text = getString(R.string.btn_receive)
+            setOnClickListener { promptReceive() }
+        }
 
         val copyright = TextView(this).apply {
             text = getString(R.string.copyright)
@@ -131,6 +149,8 @@ class MainActivity : AppCompatActivity() {
                 addView(stop)
                 addView(recordVideo)
                 addView(convertBtc)
+                addView(transfer)
+                addView(receive)
                 addView(chat)
                 addView(compass)
                 addView(refresh)
@@ -155,9 +175,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateStatus() {
-        status.text = readStatus()
+        status.text = buildStatusText()
+        status.movementMethod = LinkMovementMethod.getInstance()
         val isRunning = isEvoliaRunning()
-        startButton.visibility = if (isRunning) android.view.View.GONE else android.view.View.VISIBLE
+        startButton.visibility = if (isRunning) View.GONE else View.VISIBLE
     }
 
     private fun isEvoliaRunning(): Boolean {
@@ -168,25 +189,31 @@ class MainActivity : AppCompatActivity() {
 
     // --- auth gate -----------------------------------------------------------
 
-    private fun authenticateThenStart() {
+    private fun authenticateThenStart() = authenticate(allowSetup = true) { password -> onAuthenticated(password) }
+
+    /**
+     * Owner auth gate (PIN -> password -> optional biometric) — the Android port
+     * of evolia-start's three layers, reused for every owner action. Yields the
+     * verified password to [onOk]. When auth isn't configured yet, [allowSetup]
+     * decides whether to run first-time setup (the Start flow) or refuse (an action
+     * that presupposes an existing owner, e.g. an on-chain transfer).
+     */
+    private fun authenticate(allowSetup: Boolean, onOk: (String) -> Unit) {
         val store = AuthStore(EvoliaPaths(File(filesDir, "evolia")))
         if (!store.isConfigured()) {
-            promptSetup(store) { password -> onAuthenticated(store, password) }
-        } else {
-            promptPin(store) {
-                promptPassword(store) { password ->
-                    val cfg = store.load()
-                    if (cfg?.biometricEnabled == true) {
-                        promptBiometric { onAuthenticated(store, password) }
-                    } else {
-                        onAuthenticated(store, password)
-                    }
-                }
+            if (allowSetup) promptSetup(store) { password -> onOk(password) } else toast(getString(R.string.msg_auth_needed))
+            return
+        }
+        promptPin(store) {
+            promptPassword(store) { password ->
+                val cfg = store.load()
+                if (cfg?.biometricEnabled == true) promptBiometric { onOk(password) } else onOk(password)
             }
         }
     }
 
-    private fun onAuthenticated(store: AuthStore, password: String) {
+    private fun onAuthenticated(password: String) {
+        val store = AuthStore(EvoliaPaths(File(filesDir, "evolia")))
         store.markAuthed()
         val deviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)
             ?: "android-device"
@@ -365,9 +392,29 @@ class MainActivity : AppCompatActivity() {
         return perms.toTypedArray()
     }
 
-    private fun readStatus(): String {
+    private fun buildStatusText(): CharSequence {
         val paths = EvoliaPaths(File(filesDir, "evolia"))
-        val sb = StringBuilder()
+        val sb = SpannableStringBuilder()
+
+        // On-chain transferable balance + a clickable (*) opening the step-by-step
+        // guide on exactly what's required to exchange on-chain.
+        sb.append(getString(R.string.dashboard_onchain_balance).format(readOnchainBalanceBtce()))
+        sb.append(" ")
+        val marker = getString(R.string.dashboard_onchain_help)
+        val markerStart = sb.length
+        sb.append(marker)
+        sb.setSpan(
+            object : ClickableSpan() {
+                override fun onClick(widget: View) {
+                    startActivity(Intent(this@MainActivity, ExchangeGuideActivity::class.java))
+                }
+            },
+            markerStart,
+            markerStart + marker.length,
+            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+        )
+        sb.append("\n\n")
+
         if (paths.walletAddress.exists()) {
             sb.append(getString(R.string.dashboard_wallet))
                 .append("\n")
@@ -375,7 +422,107 @@ class MainActivity : AppCompatActivity() {
                 .append("\n\n")
         }
         sb.append(Dashboard.render(Dashboard.collect(paths)))
-        return sb.toString()
+        return sb
+    }
+
+    private fun readOnchainBalanceBtce(): Double {
+        val file = EvoliaPaths(File(filesDir, "evolia")).onchainBalance
+        if (!file.exists()) return 0.0
+        return try {
+            JSONObject(file.readText()).optLong("balance_centi", 0L) / 100.0
+        } catch (_: Exception) {
+            0.0
+        }
+    }
+
+    // --- on-chain transfer / receive ----------------------------------------
+
+    private fun promptTransfer() {
+        val toInput = EditText(this).apply {
+            hint = getString(R.string.transfer_to_hint)
+            inputType = InputType.TYPE_CLASS_TEXT
+        }
+        val amountInput = EditText(this).apply {
+            hint = getString(R.string.transfer_amount_hint)
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+        }
+        val form = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 24, 48, 0)
+            addView(toInput)
+            addView(amountInput)
+        }
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.transfer_title))
+            .setView(form)
+            .setPositiveButton(getString(R.string.auth_ok)) { _, _ ->
+                val to = toInput.text.toString().trim()
+                val amount = amountInput.text.toString().trim().toDoubleOrNull()
+                if (!isValidEthAddress(to) || amount == null || amount <= 0.0) {
+                    toast(getString(R.string.transfer_invalid))
+                } else {
+                    doTransfer(to, Math.round(amount * 100))
+                }
+            }
+            .setNegativeButton(getString(R.string.auth_cancel), null)
+            .show()
+    }
+
+    private fun doTransfer(to: String, amountCenti: Long) {
+        val paths = EvoliaPaths(File(filesDir, "evolia"))
+        toast(getString(R.string.msg_transfer_sending))
+        // web3j network call — must not run on the main thread.
+        Thread {
+            val result = ChainAnchor(this, paths).transfer(to, amountCenti)
+            runOnUiThread {
+                toast(transferMessage(result))
+                updateStatus()
+            }
+        }.start()
+    }
+
+    private fun transferMessage(result: JSONObject): String = when (result.optString("status")) {
+        "success" -> getString(R.string.msg_transfer_success).format(result.optDouble("amount_btce"), result.optString("to"))
+        "local" -> getString(R.string.msg_transfer_local).format(result.optString("note"))
+        else -> getString(R.string.msg_transfer_failed).format(result.optString("error", result.optString("note")))
+    }
+
+    private fun isValidEthAddress(addr: String): Boolean = addr.matches(Regex("^0x[0-9a-fA-F]{40}$"))
+
+    private fun promptReceive() {
+        val paths = EvoliaPaths(File(filesDir, "evolia"))
+        toast(getString(R.string.receive_preparing))
+        // Resolving the address can create the signing key (crypto) — off the UI thread.
+        Thread {
+            val address = try {
+                ChainAnchor(this, paths).myAddress()
+            } catch (_: Exception) {
+                ""
+            }
+            runOnUiThread { showReceiveDialog(address) }
+        }.start()
+    }
+
+    private fun showReceiveDialog(address: String) {
+        if (address.isBlank()) {
+            toast(getString(R.string.receive_unavailable))
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.receive_title))
+            .setMessage(getString(R.string.receive_explain).format(address))
+            .setPositiveButton(getString(R.string.auth_ok), null)
+            .setNeutralButton(getString(R.string.receive_share)) { _, _ ->
+                startActivity(
+                    Intent.createChooser(
+                        Intent(Intent.ACTION_SEND)
+                            .setType("text/plain")
+                            .putExtra(Intent.EXTRA_TEXT, address),
+                        getString(R.string.receive_share),
+                    ),
+                )
+            }
+            .show()
     }
 
     private companion object {
