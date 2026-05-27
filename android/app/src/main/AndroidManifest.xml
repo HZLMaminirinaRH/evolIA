@@ -47,6 +47,10 @@
             android:name=".ChatActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".CompassActivity"
+            android:exported="false" />
+
         <!-- stopWithTask=false: swiping the app from Recents does NOT stop the
              service. evolIA keeps running (and accruing value) until the user
              presses the explicit Stop button. -->

@@ -66,6 +66,23 @@
     <string name="battery_opt_message">Pour continuer à accumuler de la valeur en arrière-plan, autorisez evolIA à fonctionner sans restriction de batterie. L\'app continue tant que vous n\'appuyez pas sur Arrêter.</string>
     <string name="battery_opt_allow">Autoriser</string>
 
+    <!-- Boussole -->
+    <string name="btn_compass">Boussole</string>
+    <string name="compass_title">Boussole</string>
+    <string name="compass_readout">Cap : %1$d° %2$s</string>
+    <string name="compass_hint">Tournez votre téléphone pour vous orienter — la valeur s\'accumule via le gyroscope quand evolIA tourne.</string>
+    <string name="compass_unavailable">Boussole indisponible sur cet appareil.</string>
+    <string-array name="compass_cardinals">
+        <item>N</item>
+        <item>NE</item>
+        <item>E</item>
+        <item>SE</item>
+        <item>S</item>
+        <item>SO</item>
+        <item>O</item>
+        <item>NO</item>
+    </string-array>
+
     <!-- Copyright -->
     <string name="copyright">© 2026 HZLMaminirinaRH</string>
 </resources>

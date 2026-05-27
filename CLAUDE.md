@@ -74,7 +74,10 @@ contracts/               EvoliaCore.sol (on-chain PoW verifier: anchorProof
 android/                 Plan B: Kotlin app — foreground service supervising the
                          Go binaries + a native Kotlin port of the value engine
                          (core/: Evolve, EvoliaValue, ActionQueue, EvoliaPaths;
-                         sensors/AndroidSensors). Mirrors evolia_evolve.py so it
+                         sensors/AndroidSensors; sensors/CompassView+CompassMath +
+                         CompassActivity: a visual compass off the rotation-vector
+                         sensor — accel+gyro+magneto fusion — purely additive UX,
+                         the gyroscope already feeds V). Mirrors evolia_evolve.py so it
                          runs without Python (the signal-9 fix). Built in Android
                          Studio, not in CI (no Android SDK here); see android/README.md.
                          chat/: end-to-end peer messaging — ChatIdentity (Ed25519 sign

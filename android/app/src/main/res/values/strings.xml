@@ -66,6 +66,23 @@
     <string name="battery_opt_message">To keep accumulating value in the background, allow evolIA to run without battery restrictions. It keeps running until you press Stop.</string>
     <string name="battery_opt_allow">Allow</string>
 
+    <!-- Compass -->
+    <string name="btn_compass">Compass</string>
+    <string name="compass_title">Compass</string>
+    <string name="compass_readout">Heading: %1$d° %2$s</string>
+    <string name="compass_hint">Turn your phone to find your bearing — value accrues via the gyroscope while evolIA runs.</string>
+    <string name="compass_unavailable">Compass unavailable on this device.</string>
+    <string-array name="compass_cardinals">
+        <item>N</item>
+        <item>NE</item>
+        <item>E</item>
+        <item>SE</item>
+        <item>S</item>
+        <item>SW</item>
+        <item>W</item>
+        <item>NW</item>
+    </string-array>
+
     <!-- Copyright -->
     <string name="copyright">© 2026 HZLMaminirinaRH</string>
 </resources>

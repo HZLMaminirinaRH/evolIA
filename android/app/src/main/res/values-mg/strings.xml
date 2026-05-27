@@ -66,6 +66,23 @@
     <string name="battery_opt_message">Mba hanohizana ny fanangonana sanda any ambadika, avelao i evolIA handeha tsy misy fameperana bateria. Mitohy izy mandra-pitsindrianao ny AÀTO.</string>
     <string name="battery_opt_allow">Avela</string>
 
+    <!-- Famantarana avaratra -->
+    <string name="btn_compass">Famantarana avaratra</string>
+    <string name="compass_title">Famantarana avaratra</string>
+    <string name="compass_readout">Lalana: %1$d° %2$s</string>
+    <string name="compass_hint">Avadiho ny finday mba hahitana ny lalana — miakatra ny sanda amin\'ny gyroscope rehefa mandeha i evolIA.</string>
+    <string name="compass_unavailable">Tsy misy famantarana avaratra amin\'ity finday ity.</string>
+    <string-array name="compass_cardinals">
+        <item>Av</item>
+        <item>AvAt</item>
+        <item>At</item>
+        <item>AtTs</item>
+        <item>Ts</item>
+        <item>TsAnd</item>
+        <item>And</item>
+        <item>AvAnd</item>
+    </string-array>
+
     <!-- Copyright -->
     <string name="copyright">© 2026 HZLMaminirinaRH</string>
 </resources>

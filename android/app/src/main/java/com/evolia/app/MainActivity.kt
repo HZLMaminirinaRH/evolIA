@@ -92,6 +92,10 @@ class MainActivity : AppCompatActivity() {
             text = getString(R.string.btn_chat)
             setOnClickListener { startActivity(Intent(this@MainActivity, ChatActivity::class.java)) }
         }
+        val compass = Button(this).apply {
+            text = getString(R.string.btn_compass)
+            setOnClickListener { startActivity(Intent(this@MainActivity, CompassActivity::class.java)) }
+        }
         val recordVideo = Button(this).apply {
             text = getString(R.string.btn_actions)
             setOnClickListener {
@@ -128,6 +132,7 @@ class MainActivity : AppCompatActivity() {
                 addView(recordVideo)
                 addView(convertBtc)
                 addView(chat)
+                addView(compass)
                 addView(refresh)
                 addView(status, LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
