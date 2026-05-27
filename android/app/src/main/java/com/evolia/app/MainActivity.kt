@@ -36,6 +36,7 @@ import com.evolia.app.core.Dashboard
 import com.evolia.app.core.EvoliaPaths
 import com.evolia.app.security.AuthStore
 import com.evolia.app.security.Security
+import com.evolia.app.ui.copyrightFooter
 import org.json.JSONObject
 import java.io.File
 
@@ -134,12 +135,7 @@ class MainActivity : AppCompatActivity() {
             setOnClickListener { promptReceive() }
         }
 
-        val copyright = TextView(this).apply {
-            text = getString(R.string.copyright)
-            textAlignment = android.view.View.TEXT_ALIGNMENT_CENTER
-            alpha = 0.3f
-            textSize = 10f
-        }
+        val copyright = copyrightFooter(this)
 
         setContentView(
             LinearLayout(this).apply {

@@ -24,6 +24,7 @@ import com.evolia.app.chat.ChatManager
 import com.evolia.app.chat.ChatStore
 import com.evolia.app.core.ActionQueue
 import com.evolia.app.core.EvoliaPaths
+import com.evolia.app.ui.copyrightFooter
 import java.io.File
 
 /**
@@ -104,6 +105,7 @@ class ChatActivity : AppCompatActivity() {
                 )
                 addView(input)
                 addView(send)
+                addView(copyrightFooter(this@ChatActivity))
             },
         )
         renderLog()

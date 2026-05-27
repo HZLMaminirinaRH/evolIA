@@ -16,6 +16,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.evolia.app.sensors.CompassMath
 import com.evolia.app.sensors.CompassView
+import com.evolia.app.ui.copyrightFooter
 
 /**
  * Live sensor panel ("SENSORS"): a visual compass plus the readings that feed V.
@@ -86,6 +87,7 @@ class CompassActivity : AppCompatActivity(), SensorEventListener {
                     LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0).apply { weight = 1f },
                 )
                 addView(hint)
+                addView(copyrightFooter(this@CompassActivity))
             },
         )
     }

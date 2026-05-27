@@ -8,6 +8,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.evolia.app.core.EvoliaPaths
+import com.evolia.app.ui.copyrightFooter
 import java.io.File
 
 /**
@@ -59,7 +60,16 @@ class ExchangeGuideActivity : AppCompatActivity() {
             },
         )
 
-        setContentView(ScrollView(this).apply { addView(column) })
+        setContentView(
+            LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(
+                    ScrollView(this@ExchangeGuideActivity).apply { addView(column) },
+                    LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0).apply { weight = 1f },
+                )
+                addView(copyrightFooter(this@ExchangeGuideActivity))
+            },
+        )
     }
 
     private fun section(parent: LinearLayout, titleRes: Int, bodyRes: Int) {
