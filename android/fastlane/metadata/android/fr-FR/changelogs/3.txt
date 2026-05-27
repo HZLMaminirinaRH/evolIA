@@ -1,0 +1,1 @@
+Correction d'un plantage au démarrage : l'app embarque désormais un thème AppCompat et s'ouvre correctement.

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- AppCompatActivity requires a Theme.AppCompat descendant; without one the
+         app crashes at startup with "You need to use a Theme.AppCompat theme". -->
+    <style name="Theme.Evolia" parent="Theme.AppCompat.DayNight.DarkActionBar" />
+</resources>
