@@ -54,10 +54,16 @@ class ChatManager(
     data class Received(val senderFingerprint: String, val senderBundleHex: String, val text: String)
 
     /** Decrypt every inbound envelope we can open; undecryptable/forged lines are
-     *  silently skipped (open() returns null on a bad signature or wrong key). */
-    fun inbox(): List<Received> = store.readInbox().mapNotNull { wire ->
-        identity.open(wire.body)?.let {
-            Received(it.senderFingerprint, it.senderBundleHex, String(it.plaintext))
+     *  silently skipped (open() returns null on a bad signature or wrong key).
+     *  Deduped by id so a message delivered over two transports (UDP + Bluetooth)
+     *  shows once. */
+    fun inbox(): List<Received> {
+        val seen = HashSet<String>()
+        return store.readInbox().mapNotNull { wire ->
+            if (!seen.add(wire.id)) return@mapNotNull null
+            identity.open(wire.body)?.let {
+                Received(it.senderFingerprint, it.senderBundleHex, String(it.plaintext))
+            }
         }
     }
 

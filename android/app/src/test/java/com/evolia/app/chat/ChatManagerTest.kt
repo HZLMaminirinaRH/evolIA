@@ -93,6 +93,22 @@ class ChatManagerTest {
     }
 
     @Test
+    fun inboxDedupsByIdAcrossTransports() {
+        val (alice, pathsA) = manager()
+        val (bob, pathsB) = manager()
+
+        assertTrue(alice.send(bob.myBundleHex, "delivered twice"))
+        val line = pathsA.chatOutbox.readText().trim()
+        // Same envelope arrives over two transports (UDP + Bluetooth).
+        pathsB.chatInbox.appendText(line + "\n")
+        pathsB.chatInbox.appendText(line + "\n")
+
+        val received = bob.inbox()
+        assertEquals("a message delivered over two transports shows once", 1, received.size)
+        assertEquals("delivered twice", received[0].text)
+    }
+
+    @Test
     fun contactsPersist() {
         val (alice, _) = manager()
         val (bob, _) = manager()

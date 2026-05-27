@@ -11,10 +11,13 @@ import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import com.evolia.app.chain.ChainAnchor
+import com.evolia.app.chat.BluetoothMeshTransport
+import com.evolia.app.chat.ChatIdentityStore
 import com.evolia.app.chat.ChatStore
 import com.evolia.app.core.ActionQueue
 import com.evolia.app.core.EvoliaPaths
 import com.evolia.app.core.EvoliaValue
+import com.evolia.app.security.AdaptiveDefense
 import com.evolia.app.sensors.AndroidSensors
 import com.evolia.app.sensors.MediaActionCapture
 import org.bouncycastle.jce.provider.BouncyCastleProvider
@@ -51,6 +54,7 @@ class EvoliaService : Service() {
     )
     private var wakeLock: PowerManager.WakeLock? = null
     private val processes = mutableListOf<Process>()
+    private var bluetoothChat: BluetoothMeshTransport? = null
 
     // Owner session passed to the Go children (minted by the auth gate).
     private var sessionToken: String? = null
@@ -86,6 +90,10 @@ class EvoliaService : Service() {
         // Native value engine (Phase 2): runs in-process, no Python, no signal 9.
         startValueLoop(home)
 
+        // Bluetooth mesh chat (Phase 2): peer-to-peer messaging with no internet
+        // or WiFi. No-ops gracefully when Bluetooth is off/unpermitted.
+        startBluetoothChat(home)
+
         // Supervise the prebuilt Go binaries if they were packaged (Phase 1).
         val nativeDir = applicationInfo.nativeLibraryDir
         for (name in binaries) {
@@ -120,6 +128,24 @@ class EvoliaService : Service() {
         } finally {
             sensors.stop()
             media.stop()
+        }
+    }
+
+    private fun startBluetoothChat(home: File) = scope.launch {
+        val paths = EvoliaPaths(home)
+        val store = ChatStore(paths)
+        val identity = ChatIdentityStore(paths).loadOrCreate()
+        val transport = BluetoothMeshTransport(
+            this@EvoliaService, store, AdaptiveDefense(), identity.fingerprint(),
+        )
+        bluetoothChat = transport
+        transport.start(scope)
+        // Carry queued envelopes to in-range bonded peers each cycle, in step with
+        // the Go relay's cadence (the receive side runs continuously).
+        while (isActive) {
+            transport.relayToPeers()
+            transport.decayIfQuiet()
+            delay(CYCLE_MS)
         }
     }
 
@@ -186,6 +212,10 @@ class EvoliaService : Service() {
     }
 
     override fun onDestroy() {
+        // Close the Bluetooth sockets before cancelling the scope (a blocking
+        // accept() won't unwind on coroutine cancellation alone).
+        bluetoothChat?.stop()
+        bluetoothChat = null
         scope.cancel()
         synchronized(processes) {
             processes.forEach { it.destroy() }

@@ -54,6 +54,46 @@ class ChatStore(private val paths: EvoliaPaths) {
         return f.readLines().mapNotNull { if (it.isBlank()) null else Wire.fromJson(it) }
     }
 
+    /**
+     * Append an inbound envelope to the inbox — the receive sink for transports
+     * the app drives itself (the Bluetooth relay). The Go UDP relay appends here
+     * too; dedup is the caller's (it holds the seen-id set), and ChatManager.inbox
+     * also dedups by id on read, so a message delivered over two transports shows
+     * once.
+     */
+    fun appendInbox(wire: Wire) {
+        paths.home.mkdirs()
+        paths.chatInbox.appendText(wire.toJson() + "\n")
+    }
+
+    /** Ids already in the inbox — preload a dedup set so a transport does not
+     *  re-deliver a message already stored (mirror of Go chat.LoadSeenIDs). */
+    fun inboxIds(): Set<String> = readInbox().mapTo(mutableSetOf()) { it.id }
+
+    /**
+     * Atomically take the outbox aside and parse its queued envelopes, so a
+     * message is read once even if another transport drains concurrently — the
+     * same rename-aside pattern as the Go relay and evolia_actions.drain. A
+     * missing outbox yields no messages. Unparseable lines are skipped.
+     */
+    fun drainOutbox(): List<Wire> {
+        val outbox = paths.chatOutbox
+        val tmp = File(outbox.path + ".draining")
+        if (!outbox.renameTo(tmp)) return emptyList()
+        val msgs = tmp.readLines().mapNotNull { if (it.isBlank()) null else Wire.fromJson(it) }
+        tmp.delete()
+        return msgs
+    }
+
+    /** Re-queue envelopes that found no peer this tick, so the UDP relay (or the
+     *  next tick) can still carry them. Append is commutative with a concurrent
+     *  drain and the receiver dedups by id, so order/duplication is harmless. */
+    fun requeueOutbox(wires: List<Wire>) {
+        if (wires.isEmpty()) return
+        paths.home.mkdirs()
+        paths.chatOutbox.appendText(wires.joinToString("") { it.toJson() + "\n" })
+    }
+
     fun contacts(): List<Contact> {
         val f = paths.chatContacts
         if (!f.exists()) return emptyList()

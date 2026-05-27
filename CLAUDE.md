@@ -80,6 +80,11 @@ android/                 Plan B: Kotlin app — foreground service supervising t
                          chat/: end-to-end peer messaging — ChatIdentity (Ed25519 sign
                          + X25519 ECDH from one seed -> ChaCha20-Poly1305), ChatStore +
                          ChatManager (seal -> outbox / inbox -> open), ChatActivity UI.
+                         BluetoothMeshTransport: Bluetooth Classic RFCOMM relay
+                         (insecure socket + own E2E crypto, à la Briar) for offline
+                         peer messaging; ChatIntake (transport-agnostic receive
+                         pipeline, Kotlin mirror of go/chat) + BluetoothFraming
+                         (length-prefixed frames) are pure/JVM-tested.
 ```
 
 On-chain anchoring is optional and self-contained: `contracts/EvoliaCore.json`
@@ -220,8 +225,24 @@ Python `evolia_paths`, Go `mesh.Home`), so the services communicate through file
   (`ChatManager.MAX_MESSAGE_CHARS`). Composing one is itself a **valued digital action**: each sent
   message records an `sms_sent` action (via `ActionQueue`) on the sender's own device, so chat
   engagement feeds `V` → BTC-e like screen/photo/video activity (received messages are not valued —
-  they were the peer's action on their device). WiFi/LAN transport is live (Phase 1, UDP); Bluetooth
-  is Phase 2 (the outbox/inbox abstraction accepts it without protocol changes).
+  they were the peer's action on their device). WiFi/LAN transport is live (Phase 1, UDP, Go relay);
+  **Bluetooth Classic RFCOMM** is live too (Phase 2, `android/chat/BluetoothMeshTransport`), so
+  messages move peer-to-peer with NO internet and NO shared WiFi — the offline mesh use case Briar
+  serves. It rides the SAME opaque sealed envelopes and NEVER decrypts a body: an *insecure* RFCOMM
+  socket (no OS pairing) is deliberate and safe because end-to-end confidentiality/authenticity
+  already lives in `ChatIdentity` (static-static X25519 -> ChaCha20-Poly1305 + Ed25519) — exactly
+  Briar's "treat the link as untrusted, do our own crypto over it" model. The transport runs in the
+  Android app (Go cannot reach the Android radio): an RFCOMM service socket (fixed SDP UUID) accepts
+  connections and streams length-prefixed envelopes through `ChatIntake`, so hostile Bluetooth input
+  (malformed / SQL-injection-like routing fields) feeds the **same adaptive defense** as block input
+  and **breathes back down** on quiet ticks (`decayIfQuiet`, mirroring mesh-sync); the send side
+  drains the outbox to in-range bonded peers and re-queues anything undelivered (so the UDP relay or
+  the next tick still carries it). Degrades gracefully (no adapter / radio off / `BLUETOOTH_CONNECT`
+  withheld => no-op). It needs **on-device testing** (no Android SDK or Bluetooth radio in CI/sandbox);
+  the pure parts (`ChatIntake`, `BluetoothFraming`, the `ChatStore` outbox drain/requeue) are
+  JVM-tested. Multi-hop store-and-forward and simultaneous cross-transport fan-out (one message
+  offered to UDP AND Bluetooth at once) are Phase 3; Phase 2 is direct delivery to peers in radio
+  range, mirroring the UDP relay.
 - The **Super-peer role** is a central coordinating node (asymmetric, not hierarchical) that:
   - **Reads** peer blocks from the mesh vault (carrying their cognitive work proofs)
   - **Learns** patterns: which actions/sensor mixes achieve high `v_normalized`, user engagement,
