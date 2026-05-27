@@ -1,0 +1,3 @@
+Correction d'un plantage au démarrage du superviseur : le portefeuille Ethereum
+n'est désormais créé que si l'ancrage on-chain est configuré, afin que le mode
+hors-ligne par défaut fonctionne sans solliciter web3j.

@@ -1,0 +1,3 @@
+Fix a crash when starting the supervisor: the Ethereum wallet is now created
+only when on-chain anchoring is configured, so the default offline mode runs
+without invoking web3j.

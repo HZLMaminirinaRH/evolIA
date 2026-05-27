@@ -11,16 +11,33 @@ android {
         applicationId = "com.evolia.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 4
+        versionName = "0.1.3"
         ndk {
             abiFilters += listOf("arm64-v8a")
+        }
+    }
+
+    // Release signing is driven by environment variables (set in CI from
+    // GitHub Secrets). Absent them — local builds and the F-Droid main-repo
+    // build — the release stays unsigned and the builder signs it itself.
+    signingConfigs {
+        create("release") {
+            System.getenv("EVOLIA_KEYSTORE_FILE")?.let { ksPath ->
+                storeFile = file(ksPath)
+                storePassword = System.getenv("EVOLIA_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("EVOLIA_KEY_ALIAS") ?: "evolia"
+                keyPassword = System.getenv("EVOLIA_KEY_PASSWORD")
+            }
         }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (System.getenv("EVOLIA_KEYSTORE_FILE") != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 

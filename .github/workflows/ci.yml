@@ -94,9 +94,7 @@ jobs:
           java-version: '17'
       - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.9'
       - name: Unit tests (pure value core)
-        run: gradle :app:testDebugUnitTest --no-daemon
+        run: ./gradlew :app:testDebugUnitTest --no-daemon
       - name: Assemble debug APK
-        run: gradle :app:assembleDebug --no-daemon
+        run: ./gradlew :app:assembleDebug --no-daemon
