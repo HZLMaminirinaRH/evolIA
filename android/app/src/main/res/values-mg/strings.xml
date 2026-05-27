@@ -33,6 +33,23 @@
     <string name="msg_conversion">Famadihana V=%.2f → %d SAT (nahantitra)</string>
     <string name="msg_stopped">Nitsahatra.</string>
 
+    <!-- Peer chat -->
+    <string name="btn_chat">Hafatra</string>
+    <string name="chat_title">Resaka mpiara-belona</string>
+    <string name="chat_my_identity">Ny maha-izaho: %s</string>
+    <string name="chat_share_identity">Zarao ny maha-izaho</string>
+    <string name="chat_add_contact">Manampy namana</string>
+    <string name="chat_contact_name">Anaran\'ny namana</string>
+    <string name="chat_contact_bundle">Lakile ampahibemaso (bundle)</string>
+    <string name="chat_contact_added">Namana voampanampy.</string>
+    <string name="chat_message_hint">Hafatra…</string>
+    <string name="chat_send">Alefaso</string>
+    <string name="chat_no_contact">Mifidiana namana aloha.</string>
+    <string name="chat_no_contacts">(tsy misy namana)</string>
+    <string name="chat_send_failed">Lakile diso — tsy lasa.</string>
+    <string name="chat_empty">Tsy misy hafatra.</string>
+    <string name="chat_me_prefix">izaho → %1$s: %2$s</string>
+
     <!-- Dashboard -->
     <string name="dashboard_wallet">Valan\'ETH (satria misy gas):</string>
 

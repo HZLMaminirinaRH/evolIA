@@ -21,7 +21,10 @@ class EvoliaPaths(val home: File) {
     val bitcoinWallet: File get() = File(home, "evolia_bitcoin_wallet.json")
     val conversionHistory: File get() = File(home, "evolia_btc_conversion_history.json")
     val chatIdentityKey: File get() = File(home, "evolia_chat_identity.key")
-    val chatLog: File get() = File(home, "evolia_chat_log.jsonl")
+    val chatOutbox: File get() = File(home, "evolia_chat_outbox.jsonl")
+    val chatInbox: File get() = File(home, "evolia_chat_inbox.jsonl")
+    val chatFingerprint: File get() = File(home, "evolia_chat_fingerprint.txt")
+    val chatContacts: File get() = File(home, "evolia_chat_contacts.json")
 
     companion object {
         const val CONVERSION_RATE_V_TO_SAT = 100_000

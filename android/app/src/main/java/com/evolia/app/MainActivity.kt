@@ -80,6 +80,10 @@ class MainActivity : AppCompatActivity() {
             text = getString(R.string.btn_refresh)
             setOnClickListener { updateStatus() }
         }
+        val chat = Button(this).apply {
+            text = getString(R.string.btn_chat)
+            setOnClickListener { startActivity(Intent(this@MainActivity, ChatActivity::class.java)) }
+        }
         val recordVideo = Button(this).apply {
             text = getString(R.string.btn_actions)
             setOnClickListener {
@@ -115,6 +119,7 @@ class MainActivity : AppCompatActivity() {
                 addView(stop)
                 addView(recordVideo)
                 addView(convertBtc)
+                addView(chat)
                 addView(refresh)
                 addView(status, LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,

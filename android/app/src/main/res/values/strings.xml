@@ -33,6 +33,23 @@
     <string name="msg_conversion">Conversion V=%.2f → %d SAT (pending)</string>
     <string name="msg_stopped">Stopped.</string>
 
+    <!-- Peer chat -->
+    <string name="btn_chat">Messaging</string>
+    <string name="chat_title">Peer chat</string>
+    <string name="chat_my_identity">My identity: %s</string>
+    <string name="chat_share_identity">Share my identity</string>
+    <string name="chat_add_contact">Add a contact</string>
+    <string name="chat_contact_name">Contact name</string>
+    <string name="chat_contact_bundle">Public key (bundle)</string>
+    <string name="chat_contact_added">Contact added.</string>
+    <string name="chat_message_hint">Message…</string>
+    <string name="chat_send">Send</string>
+    <string name="chat_no_contact">Pick a contact first.</string>
+    <string name="chat_no_contacts">(no contacts)</string>
+    <string name="chat_send_failed">Invalid key — send failed.</string>
+    <string name="chat_empty">No messages.</string>
+    <string name="chat_me_prefix">me → %1$s: %2$s</string>
+
     <!-- Dashboard -->
     <string name="dashboard_wallet">ETH wallet (fund with gas):</string>
 
