@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"evolia/bridge"
+	"evolia/chat"
 	"evolia/defense"
 	"evolia/mesh"
 	"evolia/paths"
@@ -30,6 +31,8 @@ import (
 )
 
 const blockAddr = ":5555"
+const chatAddr = ":5556"
+const chatPort = "5556"
 
 // cycleInterval is the emit/relax cadence. EVOLIA_MESH_CYCLE_SECONDS overrides
 // the default of 5s — battery-friendly and aligned with the Python loop's
@@ -67,6 +70,15 @@ func main() {
 	// Receive blocks propagated by peers and store them in the vault.
 	go listenBlocks(vault, seen, &mu, key, def, gate, &attacks, &received, &throttled, logf)
 
+	// Relay opaque end-to-end chat alongside the value mesh: a UDP listener on
+	// chatAddr delivers inbound envelopes addressed to us into the app's inbox,
+	// while each cycle drains the app's outbox to peers. The relay never decrypts
+	// a body — E2E lives in the app — and hostile chat input feeds the same
+	// adaptive defense as block input. The seen set is preloaded so a restart
+	// does not re-deliver messages already in the inbox.
+	chatSeen := chat.LoadSeenIDs(paths.ChatInbox())
+	go listenChat(paths.ChatInbox(), chatSeen, paths.ChatFingerprint(), gate, def, &attacks, logf)
+
 	prevAttacks := attacks.Load()
 	prevReceived := received.Load()
 	prevThrottled := throttled.Load()
@@ -91,6 +103,9 @@ func main() {
 		for _, b := range blocks {
 			sendBlock(b.Device, b.VValue, b.Work, params, peers, key, logf)
 		}
+
+		// Carry any queued chat envelopes to peers (opaque; never decrypted).
+		relayChat(paths.ChatOutbox(), peers, logf)
 		time.Sleep(cycle)
 
 		// Couple the three live flows into the a_global net intensity, with the
@@ -177,6 +192,100 @@ func listenBlocks(vault string, seen map[string]bool, mu *sync.Mutex, key []byte
 			attacks.Add(1)
 			logf(fmt.Sprintf("malformed from %s rejected (defense=%.2f)", src.IP.String(), def.Record(defense.Malformed)))
 		}
+	}
+}
+
+// listenChat receives opaque chat envelopes over UDP, routes those addressed to
+// this node into the app's inbox (deduped by id), and feeds hostile input to the
+// adaptive defense. The gate throttles intake per source under pressure; a
+// throttled datagram is dropped (not scored, so the throttle can't feed itself).
+// The body is never decrypted here — end-to-end decryption is the app's job.
+func listenChat(inboxPath string, seen map[string]bool, fpPath string, gate *defense.Gate, def *defense.AdaptiveDefense, attacks *atomic.Uint64, logf func(string)) {
+	addr, err := net.ResolveUDPAddr("udp", chatAddr)
+	if err != nil {
+		logf("chat listen resolve error: " + err.Error())
+		return
+	}
+	conn, err := net.ListenUDP("udp", addr)
+	if err != nil {
+		logf("chat listen error: " + err.Error())
+		return
+	}
+	defer conn.Close()
+
+	buf := make([]byte, chat.MaxDatagramBytes)
+	for {
+		n, src, err := conn.ReadFromUDP(buf)
+		if err != nil {
+			continue
+		}
+		if !gate.Allow(src.IP.String()) {
+			continue
+		}
+		m, perr := chat.ParseIncoming(buf[:n])
+		if perr != nil {
+			attacks.Add(1)
+			if errors.Is(perr, chat.ErrInjection) {
+				logf(fmt.Sprintf("chat injection from %s rejected (defense=%.2f)", src.IP.String(), def.Record(defense.SQLInjection)))
+			} else {
+				logf(fmt.Sprintf("chat malformed from %s rejected (defense=%.2f)", src.IP.String(), def.Record(defense.Malformed)))
+			}
+			continue
+		}
+		if !chat.AddressedTo(m, chat.LoadFingerprint(fpPath)) {
+			continue // not for us — Phase 1 is direct delivery, no store-and-forward
+		}
+		if stored, err := chat.AppendInbox(inboxPath, m, seen); err != nil {
+			logf("chat inbox write error: " + err.Error())
+		} else if stored {
+			logf("chat received id=" + m.ID + " from " + src.IP.String())
+		}
+	}
+}
+
+// relayChat drains the app's outbox and carries each opaque envelope to every
+// peer over UDP. With no peers known yet it leaves messages queued (so nothing
+// is lost before discovery). Delivery is best-effort (UDP); the receiver dedups
+// by id, so a future ACK/retry layer can ride on top without protocol changes.
+func relayChat(outboxPath string, peers []string, logf func(string)) {
+	if len(peers) == 0 {
+		return
+	}
+	msgs, err := chat.DrainOutbox(outboxPath)
+	if err != nil {
+		logf("chat outbox error: " + err.Error())
+		return
+	}
+	for _, m := range msgs {
+		data := m.Wire()
+		for _, peer := range peers {
+			sendChat(chatPeerAddr(peer), data, logf)
+		}
+	}
+}
+
+// chatPeerAddr maps a peer's mesh address (host or host:blockport) to its chat
+// UDP port on the same host.
+func chatPeerAddr(peer string) string {
+	host := peer
+	if h, _, err := net.SplitHostPort(peer); err == nil {
+		host = h
+	}
+	return net.JoinHostPort(host, chatPort)
+}
+
+func sendChat(addr string, data []byte, logf func(string)) {
+	conn, err := net.DialTimeout("udp", addr, time.Second)
+	if err != nil {
+		logf("chat dial " + addr + " failed: " + err.Error())
+		return
+	}
+	defer conn.Close()
+	_ = conn.SetWriteDeadline(time.Now().Add(time.Second))
+	if _, err := conn.Write(data); err != nil {
+		logf("chat send " + addr + " failed: " + err.Error())
+	} else {
+		logf("chat sent -> " + addr)
 	}
 }
 

@@ -86,6 +86,15 @@ func MeshSyncLog() string { return filepath.Join(Home(), "evolia_mesh_sync.log")
 func NetworkLog() string  { return filepath.Join(Home(), "evolia_network.log") }
 func BridgeLog() string   { return filepath.Join(Home(), "evolia_bridge.log") }
 
+// ChatOutbox is where the app queues outgoing end-to-end chat envelopes for the
+// relay to carry to peers; ChatInbox is where inbound envelopes addressed to
+// this node are appended for the app to read and decrypt. ChatFingerprint holds
+// this node's chat-identity fingerprint (written by the app) so the opaque relay
+// can route inbound messages without ever decrypting them.
+func ChatOutbox() string      { return filepath.Join(Home(), "evolia_chat_outbox.jsonl") }
+func ChatInbox() string       { return filepath.Join(Home(), "evolia_chat_inbox.jsonl") }
+func ChatFingerprint() string { return filepath.Join(Home(), "evolia_chat_fingerprint.txt") }
+
 // GenesisUnix is the fleet-wide genesis timestamp (Unix seconds) from
 // EVOLIA_GENESIS_UNIX, the anchor for the proof-of-work value ceiling. It must
 // be the SAME value on every node (like EVOLIA_MESH_KEY), so all verifiers size
