@@ -1,0 +1,1 @@
+Fix a crash on launch: the app now ships an AppCompat theme, so it opens correctly.

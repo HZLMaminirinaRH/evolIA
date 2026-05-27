@@ -12,26 +12,28 @@ import java.io.File
  * (web3j Keys.createEcKeyPair) and stored encrypted at rest via the Android
  * Keystore (see KeystoreCrypto) — never in plaintext, never exported. The
  * address is mirrored to a plain file so the UI can show it for funding.
+ *
+ * `credentials` is lazy on purpose: generating an EC key pair pulls in web3j /
+ * BouncyCastle, which must not run unless on-chain anchoring is actually
+ * configured. In the default LOCAL mode the wallet is never touched.
  */
 class EvoliaWallet(context: Context, private val paths: EvoliaPaths) {
 
     private val keyFile = File(paths.home, "evolia_wallet.key")
-    val credentials: Credentials = loadOrCreate()
+    val credentials: Credentials by lazy { loadOrCreate() }
     val address: String get() = credentials.address
 
-    init {
-        paths.home.mkdirs()
-        paths.walletAddress.writeText(address)
-    }
-
     private fun loadOrCreate(): Credentials {
-        if (keyFile.exists()) {
-            val hex = String(KeystoreCrypto.decrypt(keyFile.readBytes())).trim()
-            return Credentials.create(hex)
-        }
-        val pair: ECKeyPair = Keys.createEcKeyPair()
         paths.home.mkdirs()
-        keyFile.writeBytes(KeystoreCrypto.encrypt(pair.privateKey.toString(16).toByteArray()))
-        return Credentials.create(pair)
+        val creds = if (keyFile.exists()) {
+            val hex = String(KeystoreCrypto.decrypt(keyFile.readBytes())).trim()
+            Credentials.create(hex)
+        } else {
+            val pair: ECKeyPair = Keys.createEcKeyPair()
+            keyFile.writeBytes(KeystoreCrypto.encrypt(pair.privateKey.toString(16).toByteArray()))
+            Credentials.create(pair)
+        }
+        paths.walletAddress.writeText(creds.address)
+        return creds
     }
 }
