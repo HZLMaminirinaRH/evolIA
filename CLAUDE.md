@@ -39,8 +39,13 @@ go/                      Go module `evolia` — networking
                          HMAC sign/verify (SignBlock/VerifyBlock) + LoadPeers + TotalV
   netdisc/               peer-discovery registry + announce parsing (testable)
   bridge/                peer block-exchange HTTP handlers + param fusion + defense-gated intake
+  chat/                  opaque transport for the app's end-to-end peer chat: routing
+                         envelope (Message) around a sealed body the relay NEVER decrypts,
+                         outbox drain (atomic rename) + inbox append (id dedup) + injection-
+                         classified intake. E2E lives in the app; Go only routes.
   cmd/mesh-sync/         binary: emit local value (signed) + relay over UDP; receive/verify peer
-                         blocks on :5555, feeding the adaptive defense
+                         blocks on :5555, feeding the adaptive defense; also relays opaque
+                         chat envelopes (drain outbox -> peers, receive on :5556 -> inbox)
   cmd/evolia-net/        binary: LAN peer discovery -> evolia_peers.json
   cmd/evolia-bridge/     binary: HTTP API (/block, /sync, /mesh/total_v, /health, /defense)
 python/                  services that produce/consume the shared state
@@ -72,6 +77,9 @@ android/                 Plan B: Kotlin app — foreground service supervising t
                          sensors/AndroidSensors). Mirrors evolia_evolve.py so it
                          runs without Python (the signal-9 fix). Built in Android
                          Studio, not in CI (no Android SDK here); see android/README.md.
+                         chat/: end-to-end peer messaging — ChatIdentity (Ed25519 sign
+                         + X25519 ECDH from one seed -> ChaCha20-Poly1305), ChatStore +
+                         ChatManager (seal -> outbox / inbox -> open), ChatActivity UI.
 ```
 
 On-chain anchoring is optional and self-contained: `contracts/EvoliaCore.json`
@@ -190,6 +198,18 @@ Python `evolia_paths`, Go `mesh.Home`), so the services communicate through file
   on re-send — the UDP receiver (`mesh.StoreIncoming`) and the HTTP bridge (`bridge.StoreBlock`,
   via the shared `mesh.StorePeerBlock`) — so `TotalV` counts each peer once and never inflates
   from repeated posts.
+- **End-to-end peer chat** rides the same mesh as an *opaque* overlay. The cryptography is the
+  app's: `ChatIdentity` (a dedicated identity, distinct from the on-chain wallet, so it works in
+  LOCAL mode) derives an Ed25519 signing key + an X25519 ECDH key from one seed; `seal()` does
+  static-static ECDH → HKDF-SHA256 → ChaCha20-Poly1305 with an Ed25519 signature binding the
+  sender, and a challenge-response proves a peer owns its advertised public bundle. The **Go relay
+  never holds a key or decrypts** — `go/chat` only routes: the app appends sealed envelopes to
+  `evolia_chat_outbox.jsonl`, `mesh-sync` drains it and carries each to peers over UDP (`:5556`),
+  receives inbound on `:5556`, and (routing by the fingerprint the app publishes to
+  `evolia_chat_fingerprint.txt`) appends those addressed to this node to `evolia_chat_inbox.jsonl`,
+  which the app reads and decrypts. Hostile chat input (malformed/injection) feeds the **same
+  adaptive defense + intake gate** as block input. Delivery is best-effort (UDP; the receiver dedups
+  by message id), so an ACK/retry or HTTP-bridge layer can ride on top without protocol changes.
 - The **Super-peer role** is a central coordinating node (asymmetric, not hierarchical) that:
   - **Reads** peer blocks from the mesh vault (carrying their cognitive work proofs)
   - **Learns** patterns: which actions/sensor mixes achieve high `v_normalized`, user engagement,
