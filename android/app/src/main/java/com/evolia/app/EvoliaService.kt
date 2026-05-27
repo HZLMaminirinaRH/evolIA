@@ -16,7 +16,9 @@ import com.evolia.app.core.EvoliaPaths
 import com.evolia.app.core.EvoliaValue
 import com.evolia.app.sensors.AndroidSensors
 import com.evolia.app.sensors.MediaActionCapture
+import org.bouncycastle.jce.provider.BouncyCastleProvider
 import org.json.JSONObject
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -25,6 +27,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.File
+import java.security.Security
 
 /**
  * Foreground service that supervises the prebuilt Go networking binaries.
@@ -40,7 +43,11 @@ import java.io.File
  */
 class EvoliaService : Service() {
 
-    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    // The exception handler keeps the service (and the app) alive if any
+    // coroutine throws — e.g. an optional web3j/sensor path failing.
+    private val scope = CoroutineScope(
+        Dispatchers.IO + SupervisorJob() + CoroutineExceptionHandler { _, _ -> },
+    )
     private var wakeLock: PowerManager.WakeLock? = null
     private val processes = mutableListOf<Process>()
 
@@ -58,6 +65,7 @@ class EvoliaService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        setupSecurityProvider()
         createChannel()
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "evolia:supervisor").apply {
@@ -86,8 +94,8 @@ class EvoliaService : Service() {
         val paths = EvoliaPaths(home)
         val value = EvoliaValue(paths)
         value.load()
-        // ChainAnchor loads/generates the signing wallet (surfacing its address)
-        // and drives on-chain (or LOCAL) anchoring each interval.
+        // Drives on-chain (or LOCAL) anchoring each interval. The signing wallet
+        // is created lazily, only if anchoring is actually configured.
         val chain = ChainAnchor(this@EvoliaService, paths)
         val sensors = AndroidSensors(this@EvoliaService).apply { start() }
         val media = MediaActionCapture(this@EvoliaService, paths).apply { start() }
@@ -152,6 +160,15 @@ class EvoliaService : Service() {
             .setSmallIcon(android.R.drawable.ic_lock_idle_lock)
             .setOngoing(true)
             .build()
+
+    // Android ships a stripped-down BouncyCastle as the default "BC" provider,
+    // which web3j's secp256k1 key generation chokes on. Replace it with the
+    // bundled full provider before any on-chain crypto runs.
+    private fun setupSecurityProvider() {
+        if (Security.getProvider("BC")?.javaClass == BouncyCastleProvider::class.java) return
+        Security.removeProvider("BC")
+        Security.insertProviderAt(BouncyCastleProvider(), 1)
+    }
 
     private fun createChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
