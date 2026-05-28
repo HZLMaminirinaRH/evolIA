@@ -286,6 +286,50 @@ Python `evolia_paths`, Go `mesh.Home`), so the services communicate through file
   or multiple nodes can learn independently (latest/strongest wins via fusion). Valorizes heavy
   mobile users by boosting engagement parameters for peers with high activity.
 
+## Monetary policy: algorithmic, not institutional
+
+**evolIA is not a bank.** BTC-e is a unit of *proven value* — the mathematical output of physical activity
+(actions, motion, proximity), rates (action caps), and time. It has no issuing authority, no central reserve,
+no discretionary policy lever. The **Super-peer is a learning coordinator, not a monetary authority**:
+
+- **What the Super-peer does NOT do:**
+  - Does not mint, burn, or modify value on any device
+  - Does not operate a central exchange (Bourse) or market maker
+  - Does not set exchange rates (BTC-e ↔ fiat or sat)
+  - Does not approve, reject, or gatekeep transactions
+
+- **What the Super-peer does:**
+  - Reads peer blocks (carrying work proofs) from the mesh vault
+  - Learns patterns: which actions/sensor mixes achieve high engagement, which peers are active, which peers are adversarial
+  - **Evolves formula parameters asymmetrically** (not symmetric gossip): adjusts `ACTION_RATES` thresholds and `COEFF` weights based on global patterns
+  - Propagates evolved parameters back via `evolia_cognitive_params.json` to all peers
+  - Strengthens the formula itself through pattern recognition, not through a ledger
+
+- **Monetary policy IS the algorithm:**
+  - `ACTION_RATES`: physical rate caps (max SMS/video/photo per second) that cannot be exceeded
+  - `COEFF`: weighting (BLE > WiFi) in the base formula `base(actions) × (1+v) + floor×v`
+  - `EVOLIA_GENESIS_UNIX`: the fleet-wide value ceiling (no peer can claim more than `MaxGainPerSec × elapsed`)
+  - Proof-of-work validation: on-chain recomputation (`EvoliaCore.anchorProof`) recalculates the increment and rejects forgeries
+
+- **No internal exchange mechanism:**
+  - No Bourse, no order book, no bid/ask spread
+  - Transfers are **peer-to-peer direct**: `transfer(to, amount)` moves proven BTC-e from one address to another
+  - The contract conserves the total (Σ `provenOf` == `provenValue`); value only moves, never created
+
+- **External exchange is P2P and opt-in:**
+  - If a user wishes to convert BTC-e to satoshi (on-chain) or fiat (off-chain), that is a private transaction
+  - evolIA provides no built-in conversion tool (only the guide explaining how to use external services)
+  - Any external exchange is mediated by the user's choice of platform (Binance, OKX, peer, etc.) — not operated or endorsed by evolIA
+  - The gateway to on-chain settlement is the RPC node (which the user controls or trusts); gas is paid in the network's native coin
+
+- **Distribution is decentralized:**
+  - Every device earns BTC-e according to its own activity (action queue, sensor data, time)
+  - Peers accumulate independently; the mesh synchronizes work proofs, not value creation
+  - Transfers are user-initiated and logged locally; no centralized ledger except on-chain (if opted into)
+  - The app never suggests, advertises, or provides links to external exchanges; it only explains prerequisites (RPC, gas) and mechanics (send/receive)
+
+This design closes monetary policy to discretion. The formulas, caps, and on-chain verification are the sole "laws" of the economy.
+
 The value economy is tunable in `evolia_evolve.py`: `ACTION_RATES` (video > photo > sms >
 screen) and `COEFF` (BLE > WiFi). The Super-peer learns optimal tuning from peer behavior.
 
