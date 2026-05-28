@@ -24,6 +24,7 @@ import com.evolia.app.chat.ChatManager
 import com.evolia.app.chat.ChatStore
 import com.evolia.app.core.ActionQueue
 import com.evolia.app.core.EvoliaPaths
+import com.evolia.app.ui.copyToClipboard
 import com.evolia.app.ui.copyrightFooter
 import java.io.File
 
@@ -69,7 +70,7 @@ class ChatActivity : AppCompatActivity() {
             setTextIsSelectable(true)
         }
         val shareId = Button(this).apply {
-            text = getString(R.string.chat_share_identity)
+            text = getString(R.string.chat_copy_identity)
             setOnClickListener { shareBundle() }
         }
         val addContact = Button(this).apply {
@@ -179,15 +180,8 @@ class ChatActivity : AppCompatActivity() {
     }
 
     private fun shareBundle() {
-        startActivity(
-            Intent.createChooser(
-                Intent(Intent.ACTION_SEND).apply {
-                    type = "text/plain"
-                    putExtra(Intent.EXTRA_TEXT, manager.myBundleHex)
-                },
-                getString(R.string.chat_share_identity),
-            ),
-        )
+        copyToClipboard(this, getString(R.string.chat_copy_identity), manager.myBundleHex)
+        toast(getString(R.string.msg_copied))
     }
 
     private fun promptAddContact() {

@@ -39,7 +39,7 @@
     <string name="btn_chat">Hafatra</string>
     <string name="chat_title">Resaka mpiara-belona</string>
     <string name="chat_my_identity">Ny maha-izaho: %s</string>
-    <string name="chat_share_identity">Zarao ny maha-izaho</string>
+    <string name="chat_copy_identity">Adikao ny maha-izaho</string>
     <string name="chat_add_contact">Manampy namana</string>
     <string name="chat_contact_name">Anaran\'ny namana</string>
     <string name="chat_contact_bundle">Lakile ampahibemaso (bundle)</string>
@@ -72,7 +72,8 @@
     <string name="receive_unavailable">Tsy hita ny adiresy (tsy nety ny crypto on-chain).</string>
     <string name="receive_title">Mandray BTC-e</string>
     <string name="receive_explain">Zarao ity adiresy ity — mandefa BTC-e ao ny mpiara-belona ary mihavao ho azy ny solanao on-chain:\n\n%1$s</string>
-    <string name="receive_share">Zarao</string>
+    <string name="receive_copy">Adikao ny adiresy</string>
+    <string name="msg_copied">Voadika tao amin\'ny presse-papier</string>
     <string name="guide_title">Fanakalozana on-chain — torolalana ho an\'ny vao manomboka</string>
     <string name="guide_body">Ny BTC-e dia ny sanda aorin\'i evolIA avy amin\'ny asanao. « On-chain » dia midika fa voasoratra ao amin\'ny blockchain ny fandefasana — rejisitra iombonana sady tsy azo hosoka — ka tsy azo hosohosoina na lany indroa. Ny fanakalozana on-chain dia mila zavatra telo, hazavaina etsy ambany : fifandraisana amin\'ny blockchain (RPC), sara kely amin\'ny tambajotra (gas), ary ny adiresin\'ny mpandray. Vao mianatra momba ny crypto? Vakio ny manaraka — hazavaina tsotra ny dingana tsirairay.</string>
     <string name="guide_s1_title">1. Inona ny RPC, ary ahoana no fametrahana azy</string>

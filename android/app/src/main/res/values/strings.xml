@@ -39,7 +39,7 @@
     <string name="btn_chat">Messaging</string>
     <string name="chat_title">Peer chat</string>
     <string name="chat_my_identity">My identity: %s</string>
-    <string name="chat_share_identity">Share my identity</string>
+    <string name="chat_copy_identity">Copy my identity</string>
     <string name="chat_add_contact">Add a contact</string>
     <string name="chat_contact_name">Contact name</string>
     <string name="chat_contact_bundle">Public key (bundle)</string>
@@ -72,7 +72,8 @@
     <string name="receive_unavailable">Address unavailable (on-chain crypto failed).</string>
     <string name="receive_title">Receive BTC-e</string>
     <string name="receive_explain">Share this address — peers transfer BTC-e to it and your balance updates automatically on-chain:\n\n%1$s</string>
-    <string name="receive_share">Share</string>
+    <string name="receive_copy">Copy address</string>
+    <string name="msg_copied">Copied to clipboard</string>
     <string name="guide_title">On-chain exchange — a beginner\'s guide</string>
     <string name="guide_body">Your BTC-e is the value evolIA builds from your activity. \"On-chain\" means a transfer is written on a blockchain — a shared, tamper-proof ledger — so it cannot be faked or spent twice. Exchanging on-chain needs three things, explained below: a connection to the blockchain (RPC), a tiny network fee (gas), and the recipient\'s address. New to crypto? Read on — each step is explained plainly.</string>
     <string name="guide_s1_title">1. What is an RPC, and how to set it</string>

@@ -36,6 +36,7 @@ import com.evolia.app.core.Dashboard
 import com.evolia.app.core.EvoliaPaths
 import com.evolia.app.security.AuthStore
 import com.evolia.app.security.Security
+import com.evolia.app.ui.copyToClipboard
 import com.evolia.app.ui.copyrightFooter
 import org.json.JSONObject
 import java.io.File
@@ -508,15 +509,9 @@ class MainActivity : AppCompatActivity() {
             .setTitle(getString(R.string.receive_title))
             .setMessage(getString(R.string.receive_explain).format(address))
             .setPositiveButton(getString(R.string.auth_ok), null)
-            .setNeutralButton(getString(R.string.receive_share)) { _, _ ->
-                startActivity(
-                    Intent.createChooser(
-                        Intent(Intent.ACTION_SEND)
-                            .setType("text/plain")
-                            .putExtra(Intent.EXTRA_TEXT, address),
-                        getString(R.string.receive_share),
-                    ),
-                )
+            .setNeutralButton(getString(R.string.receive_copy)) { _, _ ->
+                copyToClipboard(this, getString(R.string.receive_title), address)
+                toast(getString(R.string.msg_copied))
             }
             .show()
     }

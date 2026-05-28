@@ -39,7 +39,7 @@
     <string name="btn_chat">Messagerie</string>
     <string name="chat_title">Chat pair-à-pair</string>
     <string name="chat_my_identity">Mon identité : %s</string>
-    <string name="chat_share_identity">Partager mon identité</string>
+    <string name="chat_copy_identity">Copier mon identité</string>
     <string name="chat_add_contact">Ajouter un contact</string>
     <string name="chat_contact_name">Nom du contact</string>
     <string name="chat_contact_bundle">Clé publique (bundle)</string>
@@ -72,7 +72,8 @@
     <string name="receive_unavailable">Adresse indisponible (crypto on-chain en échec).</string>
     <string name="receive_title">Recevoir du BTC-e</string>
     <string name="receive_explain">Partagez cette adresse — les pairs y transfèrent du BTC-e et votre solde se met à jour automatiquement on-chain :\n\n%1$s</string>
-    <string name="receive_share">Partager</string>
+    <string name="receive_copy">Copier l\'adresse</string>
+    <string name="msg_copied">Copié dans le presse-papiers</string>
     <string name="guide_title">Échange on-chain — guide pour débutants</string>
     <string name="guide_body">Vos BTC-e représentent la valeur qu\'evolIA construit à partir de votre activité. « On-chain » signifie qu\'un transfert est inscrit sur une blockchain — un registre partagé et infalsifiable — de sorte qu\'il ne peut être ni falsifié ni dépensé deux fois. Échanger on-chain demande trois choses, expliquées ci-dessous : une connexion à la blockchain (RPC), de petits frais de réseau (gas), et l\'adresse du destinataire. Nouveau dans la crypto ? Lisez la suite — chaque étape est expliquée simplement.</string>
     <string name="guide_s1_title">1. Qu\'est-ce qu\'un RPC, et comment le configurer</string>
