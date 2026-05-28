@@ -4,6 +4,7 @@ import android.bluetooth.BluetoothManager
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.graphics.Typeface
 import android.net.wifi.WifiManager
 import android.os.Bundle
 import android.os.Handler
@@ -26,6 +27,7 @@ import com.evolia.app.core.ActionQueue
 import com.evolia.app.core.EvoliaPaths
 import com.evolia.app.ui.copyToClipboard
 import com.evolia.app.ui.copyrightFooter
+import com.evolia.app.ui.sanitizeForDisplay
 import java.io.File
 
 /**
@@ -80,7 +82,13 @@ class ChatActivity : AppCompatActivity() {
         contactSpinner = Spinner(this)
         refreshContacts()
 
-        log = TextView(this)
+        log = TextView(this).apply {
+            // Defence-in-depth: never auto-linkify received text, and never let a
+            // future change make any link tappable — received content stays inert.
+            autoLinkMask = 0
+            linksClickable = false
+            typeface = Typeface.create("cursive", Typeface.ITALIC)
+        }
         val scroll = ScrollView(this).apply { addView(log) }
 
         val input = EditText(this).apply {
@@ -139,7 +147,7 @@ class ChatActivity : AppCompatActivity() {
             return
         }
         if (manager.send(contact.bundleHex, text)) {
-            sent.add(getString(R.string.chat_me_prefix).format(contact.name, text))
+            sent.add(getString(R.string.chat_me_prefix).format(sanitizeForDisplay(contact.name), sanitizeForDisplay(text)))
             input.text.clear()
             renderLog()
         } else {
@@ -169,7 +177,14 @@ class ChatActivity : AppCompatActivity() {
             return
         }
         val sb = StringBuilder()
-        manager.inbox().forEach { sb.append(it.senderFingerprint.take(8)).append(" > ").append(it.text).append("\n") }
+        // Sanitize per field (before the separators) so a received message can't
+        // inject control chars, fake newlines, or bidi-spoof the conversation.
+        manager.inbox().forEach {
+            sb.append(sanitizeForDisplay(it.senderFingerprint.take(8)))
+                .append(" > ")
+                .append(sanitizeForDisplay(it.text))
+                .append("\n")
+        }
         sent.forEach { sb.append(it).append("\n") }
         log.text = if (sb.isEmpty()) getString(R.string.chat_empty) else sb.toString()
     }
