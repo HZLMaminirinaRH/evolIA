@@ -85,6 +85,11 @@ class ExchangeGuideActivity : AppCompatActivity() {
     }
 
     private fun paragraph(content: String): TextView = TextView(this).apply {
+        // The guide names external services (chainlist.org, providers) and shows
+        // example URLs as plain text. Keep them inert: never auto-linkify, never
+        // make any of it tappable — the app exposes no outward links by design.
+        autoLinkMask = 0
+        linksClickable = false
         textSize = 15f
         setLineSpacing(8f, 1f)
         text = content
