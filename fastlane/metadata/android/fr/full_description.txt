@@ -1,0 +1,11 @@
+evolIA transforme vos activités mobiles en valeur. Bougez, prenez des photos, envoyez des messages, interagissez avec vos pairs — chaque action est enregistrée et vous récompense en BTC-e, un actif numérique pair-à-pair.
+
+Fonctionnalités :
+• Gagnez de la valeur : chaque vidéo, photo, SMS et interaction d'écran compte
+• Capteurs : le mouvement, la localisation, les proximités Wi-Fi et Bluetooth alimentent votre accumulation
+• Messagerie pair-à-pair : chat chiffré de bout en bout avec les pairs proches via Bluetooth ou LAN (pas d'internet requis)
+• Transferts on-chain : envoyez directement vos BTC-e gagnés aux adresses des pairs sur les blockchains EVM (financement optionnel du gas via Binance, OKX ou Mobile Money)
+• Propriété locale : vos clés privées et votre identité restent chiffrées sur votre téléphone
+• Hors-ligne d'abord : l'app fonctionne sans internet ; synchronisez avec les pairs quand c'est disponible
+
+evolIA est ouverte, décentralisée et respectueuse de la vie privée. Pas de banque centrale, pas de publicités, pas de suivi. Vos données sont vôtres.

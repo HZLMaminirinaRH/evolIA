@@ -1,0 +1,15 @@
+v0.2.1 : Transferts BTC-e on-chain et guide pour débutants
+
+Nouveau :
+• Bouton Transférer : envoyez directement vos BTC-e gagnés aux pairs (gated par l'auth propriétaire, règlement on-chain)
+• Bouton Recevoir : partagez votre adresse pour les BTC-e entrants (mise à jour automatique du solde)
+• Guide d'échange : explication étape par étape du RPC, du gas et du financement externe (Binance, OKX, Mobile Money)
+• Anti-linkification : le rendu du chat est inerte (pas d'auto-liens, pas d'injection de texte cliquable)
+
+Amélioré :
+• Partage par presse-papiers uniquement (aucune intention externe)
+• Sanitisation du chat : caractères de contrôle et caractères de spoofing bidi supprimés
+• Police cursive italique sur le journal de chat pour une meilleure séparation visuelle
+• Pied de page de droit d'auteur sur tous les écrans (© 2026 HZLMaminirinaRH)
+
+Localisé en anglais, français, malgache.

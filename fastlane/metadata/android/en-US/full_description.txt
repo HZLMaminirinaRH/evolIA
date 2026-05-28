@@ -1,0 +1,11 @@
+evolIA turns your mobile activity into value. Move, take photos, send messages, interact with peers—each action is recorded and rewards you with BTC-e, a peer-to-peer digital asset.
+
+Features:
+• Earn value from action: every video, photo, SMS, and screen interaction counts
+• Sensor-driven: motion, location, WiFi and Bluetooth proximity feed your accumulation
+• Peer-to-peer messaging: end-to-end encrypted chat with nearby peers over Bluetooth or LAN (no internet required)
+• On-chain transfers: move earned BTC-e directly to peers' addresses on EVM blockchains (with optional gas funding via Binance, OKX, or Mobile Money)
+• Local ownership: your private keys and identity stay encrypted on your phone
+• Offline-first: the app works without internet; sync with peers when available
+
+evolIA is open, decentralized, and privacy-centric. No central bank, no ads, no tracking. Your data is yours.

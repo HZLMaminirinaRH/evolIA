@@ -1,0 +1,11 @@
+Ny evolIA dia mamadika ny asa finday anao ho sanda. Miondrika, mindra sary, alefaso hafatra, ifampitsarana amin\'ny namana — asa tsirairay dia bokin\'ny asa ary manome anao BTC-e, sanda natiora amin\'ny mpiara-belona.
+
+Hehy-pohy:
+• Miangona sanda : asa finday tsirairay dia lasa sanda (vidéo, sary, SMS, fifandraisana ecran)
+• Famantarana : ny fikirifitry ny vatana, ny toerana, ny afoam\'i Wi-Fi ary Bluetooth dia mitondra ny fiangonana
+• Hafatra mpiara-belona : hafatra manokafy miafina amin\'ny namana akaiky amin\'ny Bluetooth na LAN (tsy mila aterineto)
+• Famindrana on-chain : alefaso ny BTC-e niangonana nao amin\'ny adiresin\'ny namana, amin\'ny blockchain EVM (rafitra gas optional amin\'ny Binance, OKX na Mobile Money)
+• Fananana any an-toerana : ny lakile miafina sy ny maha-izaho dia amboarina amin\'ny finday
+• Tsy mila aterineto : ny app dia miasa tsy mila aterineto ; miditra amin\'ny namana rehefa aotra
+
+Ny evolIA dia misokatra, mifaninana, ary maharo-maharo. Tsy misy banky sambatra, tsy misy kinafitsahina, tsy misy fitantanana. Ny filahinao dia ahy.

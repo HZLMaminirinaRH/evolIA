@@ -1,0 +1,15 @@
+v0.2.1: On-chain BTC-e transfers and beginner's guide
+
+New:
+• Transfer button: send earned BTC-e directly to peers (owner-auth gated, on-chain settlement)
+• Receive button: share your address for incoming BTC-e (automatic balance update)
+• Exchange guide: step-by-step explanation of RPC, gas, and external funding (Binance, OKX, Mobile Money)
+• Anti-linkification: chat rendering is inert (no auto-links, no clickable text injection)
+
+Improved:
+• Clipboard-only sharing (no external intents)
+• Chat sanitization: control chars and bidi-spoof characters stripped
+• Cursive italic font on chat log for better visual separation
+• Copyright footer on all screens (© 2026 HZLMaminirinaRH)
+
+Localized in English, French, Malagasy.

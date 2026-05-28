@@ -1,0 +1,15 @@
+v0.2.1 : Famindrana BTC-e on-chain sy torolalana ho an\'ny vao manomboka
+
+Baro :
+• Tsindrio Mandefa : alefaso ny BTC-e niangonana nao amin\'ny namana (gated amin\'ny fanamarinana tompony, rafitra on-chain)
+• Tsindrio Mandray : zarao ny adiresinao, miditra BTC-e sy mihavao ny solanao
+• Torolalana famindrana : fahazavana etsy ambany momba ny RPC, gas, ary rafitra vola (Binance, OKX, Mobile Money)
+• Tsy misy links : ny hafatra dia tsy misy auto-links, tsy misy texts clickable
+
+Nahatsara :
+• Adika amin\'ny presse-papier fotsiny (tsy misy intents)
+• Hafatra mafafa ny kirimaina mitady : out C0/C1 sy bidi-spoof chars
+• Police cursive italic ao amin\'ny hafatra
+• Copyright footer (© 2026 HZLMaminirinaRH)
+
+Soratry amin\'i Anglisy, Frantsay, Malagasy.
