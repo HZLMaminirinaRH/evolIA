@@ -24,6 +24,12 @@ class EvoliaPaths(val home: File) {
     val onchainBalance: File get() = File(home, "evolia_onchain_balance.json")
     val chatIdentityKey: File get() = File(home, "evolia_chat_identity.key")
     val chatOutbox: File get() = File(home, "evolia_chat_outbox.jsonl")
+    // Bluetooth has its OWN outbox, fanned-out from enqueue alongside chatOutbox.
+    // The Go mesh-sync binary drains chatOutbox for UDP; if both transports drained
+    // the SAME file, whichever ran first would consume the message and starve the
+    // other (the "BT on, queue empty, never delivered" race). Two queues + the
+    // receiver's id-dedup let each transport try independently with no double-show.
+    val chatOutboxBt: File get() = File(home, "evolia_chat_outbox_bt.jsonl")
     val chatInbox: File get() = File(home, "evolia_chat_inbox.jsonl")
     val chatFingerprint: File get() = File(home, "evolia_chat_fingerprint.txt")
     val chatContacts: File get() = File(home, "evolia_chat_contacts.json")

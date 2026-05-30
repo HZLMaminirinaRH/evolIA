@@ -54,6 +54,59 @@ class ChatStoreTest {
     }
 
     @Test
+    fun enqueueFansOutToBothTransportQueues() {
+        // The UDP outbox (drained by the Go binary) and the Bluetooth outbox are
+        // independent: draining one must not consume the other, so each transport
+        // gets its own copy and neither starves the other.
+        val (s, _) = store()
+        s.enqueue(wire("a"))
+        s.enqueue(wire("b"))
+        // Drain the UDP queue first; the BT queue must still hold both.
+        assertEquals(listOf("a", "b"), s.drainOutbox().map { it.id })
+        assertEquals("BT queue is not consumed by a UDP drain", listOf("a", "b"), s.drainBtOutbox().map { it.id })
+        // Both now empty.
+        assertTrue(s.drainOutbox().isEmpty())
+        assertTrue(s.drainBtOutbox().isEmpty())
+    }
+
+    @Test
+    fun btOutboxPendingCountsUndelivered() {
+        val (s, _) = store()
+        assertEquals(0, s.btOutboxPending())
+        s.enqueue(wire("a"))
+        s.enqueue(wire("b"))
+        assertEquals(2, s.btOutboxPending())
+        // Draining the UDP queue must NOT change the BT pending count.
+        s.drainOutbox()
+        assertEquals("UDP drain leaves the BT queue intact", 2, s.btOutboxPending())
+        s.drainBtOutbox()
+        assertEquals(0, s.btOutboxPending())
+    }
+
+    @Test
+    fun requeueBtRestoresUndelivered() {
+        val (s, _) = store()
+        s.enqueue(wire("a"))
+        val drained = s.drainBtOutbox()
+        s.requeueBtOutbox(drained)
+        assertEquals("re-queued BT envelopes drain again", listOf("a"), s.drainBtOutbox().map { it.id })
+    }
+
+    @Test
+    fun purgeWipesBothQueues() {
+        val (s, paths) = store()
+        s.enqueue(wire("a"))
+        s.appendInbox(wire("x"))
+        assertTrue(paths.chatOutbox.exists())
+        assertTrue(paths.chatOutboxBt.exists())
+        s.purgeMessages()
+        assertFalse("UDP outbox wiped", paths.chatOutbox.exists())
+        assertFalse("BT outbox wiped", paths.chatOutboxBt.exists())
+        assertEquals(0, s.btOutboxPending())
+        assertTrue(s.readInbox().isEmpty())
+    }
+
+    @Test
     fun addThenRemoveContactRoundtrip() {
         val (s, _) = store()
         s.addContact("Alice", "aa")

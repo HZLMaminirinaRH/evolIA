@@ -424,8 +424,9 @@ class ChatActivity : AppCompatActivity() {
             bondedNames.joinToString("\n")
         }
         val stats = readBtStats()
-        val paths = EvoliaPaths(File(filesDir, "evolia"))
-        val outboxPending = if (paths.chatOutbox.exists()) paths.chatOutbox.readLines().count { it.isNotBlank() } else 0
+        // The BT queue reflects real undelivered depth (the UDP outbox is drained
+        // by the Go binary, so it reads ~0 even with a message in flight).
+        val outboxPending = store.btOutboxPending()
         val message = getString(R.string.chat_diag_message).format(
             if (btOn) getString(R.string.chat_diag_on) else getString(R.string.chat_diag_off),
             if (perm) getString(R.string.chat_diag_on) else getString(R.string.chat_diag_off),

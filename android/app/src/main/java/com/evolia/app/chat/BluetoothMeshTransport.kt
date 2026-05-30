@@ -169,8 +169,10 @@ class BluetoothMeshTransport(
         }
     }
 
-    /** Drain the outbox and push to in-range bonded peers; re-queue if none
-     *  could be reached so the message is not lost. */
+    /** Drain the Bluetooth outbox and push to in-range bonded peers; re-queue if
+     *  none could be reached so the message is not lost. This drains the dedicated
+     *  BT queue (chatOutboxBt), not the shared one — the Go binary owns the UDP
+     *  outbox, so the two transports never race to consume the same message. */
     fun relayToPeers() {
         if (!isAvailable()) return
         val devices = try {
@@ -178,8 +180,8 @@ class BluetoothMeshTransport(
         } catch (_: SecurityException) {
             return
         }
-        if (devices.isEmpty()) return // no candidate peer -> leave the outbox for the UDP relay
-        val msgs = store.drainOutbox()
+        if (devices.isEmpty()) return // no bonded peer -> leave the BT queue for a later tick
+        val msgs = store.drainBtOutbox()
         if (msgs.isEmpty()) return
 
         val frames = msgs.map { it.toJson().toByteArray(Charsets.UTF_8) }
@@ -187,7 +189,7 @@ class BluetoothMeshTransport(
         for (device in devices) {
             if (sendFramesTo(device, frames)) deliveredToAny = true
         }
-        if (!deliveredToAny) store.requeueOutbox(msgs)
+        if (!deliveredToAny) store.requeueBtOutbox(msgs)
     }
 
     /** Relax the defense one notch on a quiet tick (no hostile frame since the

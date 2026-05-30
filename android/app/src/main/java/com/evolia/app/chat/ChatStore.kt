@@ -47,10 +47,22 @@ class ChatStore(private val paths: EvoliaPaths) {
         paths.chatFingerprint.writeText(fingerprint)
     }
 
-    /** Queue a sealed envelope for the relay to carry to peers. */
+    /**
+     * Queue a sealed envelope, fanned out to BOTH transport outboxes: chatOutbox
+     * (drained by the Go mesh-sync binary for UDP/Wi-Fi) and chatOutboxBt (drained
+     * by the in-app Bluetooth relay). Two independent queues are deliberate — if
+     * both transports drained one shared file, whichever ran first would consume
+     * the message and starve the other (the live "Bluetooth on, queue already
+     * empty, never delivered" race the user hit when Wi-Fi was off: Go drained the
+     * outbox, the UDP datagram went nowhere, and BT found nothing left). Because
+     * the receiver dedups by wire.id, offering the same message to both transports
+     * delivers it once with no double-show.
+     */
     fun enqueue(wire: Wire) {
         paths.home.mkdirs()
-        paths.chatOutbox.appendText(wire.toJson() + "\n")
+        val line = wire.toJson() + "\n"
+        paths.chatOutbox.appendText(line)
+        paths.chatOutboxBt.appendText(line)
     }
 
     /** Inbound envelopes the relay delivered to us (newest last). */
@@ -77,13 +89,12 @@ class ChatStore(private val paths: EvoliaPaths) {
     fun inboxIds(): Set<String> = readInbox().mapTo(mutableSetOf()) { it.id }
 
     /**
-     * Atomically take the outbox aside and parse its queued envelopes, so a
-     * message is read once even if another transport drains concurrently — the
-     * same rename-aside pattern as the Go relay and evolia_actions.drain. A
-     * missing outbox yields no messages. Unparseable lines are skipped.
+     * Atomically take an outbox aside and parse its queued envelopes, so a message
+     * is read once even if another reader drains concurrently — the rename-aside
+     * pattern of the Go relay and evolia_actions.drain. A missing outbox yields no
+     * messages; unparseable lines are skipped.
      */
-    fun drainOutbox(): List<Wire> {
-        val outbox = paths.chatOutbox
+    private fun drain(outbox: File): List<Wire> {
         val tmp = File(outbox.path + ".draining")
         if (!outbox.renameTo(tmp)) return emptyList()
         val msgs = tmp.readLines().mapNotNull { if (it.isBlank()) null else Wire.fromJson(it) }
@@ -91,13 +102,38 @@ class ChatStore(private val paths: EvoliaPaths) {
         return msgs
     }
 
-    /** Re-queue envelopes that found no peer this tick, so the UDP relay (or the
-     *  next tick) can still carry them. Append is commutative with a concurrent
-     *  drain and the receiver dedups by id, so order/duplication is harmless. */
-    fun requeueOutbox(wires: List<Wire>) {
+    /** Drain the UDP/Wi-Fi outbox. On Android the Go mesh-sync binary owns this
+     *  queue in production; this Kotlin path is the same rename-aside contract,
+     *  exercised by the store tests and available to a future in-app UDP relay. */
+    fun drainOutbox(): List<Wire> = drain(paths.chatOutbox)
+
+    /** Drain the Bluetooth outbox — the queue the in-app RFCOMM relay owns. */
+    fun drainBtOutbox(): List<Wire> = drain(paths.chatOutboxBt)
+
+    /** Re-queue UDP envelopes that found no peer this tick. Append is commutative
+     *  with a concurrent drain and the receiver dedups by id, so order/duplication
+     *  is harmless. Bounded to the newest MAX_OUTBOX so an offline spell can't grow
+     *  the queue without limit (mirrors the Go relay's MAX_QUEUE). */
+    fun requeueOutbox(wires: List<Wire>) = requeue(paths.chatOutbox, wires)
+
+    /** Re-queue Bluetooth envelopes undelivered this tick (no bonded peer reached). */
+    fun requeueBtOutbox(wires: List<Wire>) = requeue(paths.chatOutboxBt, wires)
+
+    private fun requeue(outbox: File, wires: List<Wire>) {
         if (wires.isEmpty()) return
         paths.home.mkdirs()
-        paths.chatOutbox.appendText(wires.joinToString("") { it.toJson() + "\n" })
+        // Keep only the newest MAX_OUTBOX so a long offline spell (e.g. Bluetooth
+        // with no peer ever in range) cannot grow the queue unbounded.
+        val bounded = if (wires.size > MAX_OUTBOX) wires.takeLast(MAX_OUTBOX) else wires
+        outbox.appendText(bounded.joinToString("") { it.toJson() + "\n" })
+    }
+
+    /** Pending count in the Bluetooth outbox — surfaced by the in-app diagnostic so
+     *  a stuck/undelivered message is visible (the UDP outbox is drained by Go, so
+     *  it reads ~0 even mid-flight; the BT queue reflects real undelivered depth). */
+    fun btOutboxPending(): Int {
+        val f = paths.chatOutboxBt
+        return if (f.exists()) f.readLines().count { it.isNotBlank() } else 0
     }
 
     fun contacts(): List<Contact> {
@@ -127,6 +163,10 @@ class ChatStore(private val paths: EvoliaPaths) {
         paths.chatInbox.delete()
         paths.chatOutbox.delete()
         File(paths.chatOutbox.path + ".draining").delete()
+        // The Bluetooth fan-out queue is message content too — wipe it (and any
+        // half-drained tmp) so a stop leaves nothing confidential on disk.
+        paths.chatOutboxBt.delete()
+        File(paths.chatOutboxBt.path + ".draining").delete()
     }
 
     /** Add or update a contact (keyed by bundle), persisting the list. */
@@ -168,5 +208,11 @@ class ChatStore(private val paths: EvoliaPaths) {
         return readInbox()
             .filter { it.type == "ack" }
             .mapTo(mutableSetOf()) { it.body } // body holds the original message id
+    }
+
+    companion object {
+        /** Upper bound on a re-queued outbox, so an offline spell can't grow it
+         *  unbounded (mini-messages, ephemeral; mirrors the Go relay's MAX_QUEUE). */
+        const val MAX_OUTBOX = 256
     }
 }
