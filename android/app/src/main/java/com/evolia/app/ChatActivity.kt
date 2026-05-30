@@ -90,6 +90,13 @@ class ChatActivity : AppCompatActivity() {
             text = getString(R.string.chat_remove_contact)
             setOnClickListener { promptRemoveContact() }
         }
+        // Diagnostic: shows transport state (BT/Wi-Fi on/off + bonded peer count)
+        // so a user reporting "Bluetooth is on but message lost" can see immediately
+        // that no peer is paired at the OS level — the real common failure mode.
+        val diagnostic = Button(this).apply {
+            text = getString(R.string.chat_diag_button)
+            setOnClickListener { showTransportDiagnostic() }
+        }
         // Multi-recipient picker: tap to open a checkbox list of contacts; the
         // button label shows who's currently selected, so the user can see who
         // a message will go to before pressing Send.
@@ -124,6 +131,7 @@ class ChatActivity : AppCompatActivity() {
                 addView(shareId)
                 addView(addContact)
                 addView(removeContact)
+                addView(diagnostic)
                 addView(recipientsButton)
                 addView(
                     scroll,
@@ -388,6 +396,46 @@ class ChatActivity : AppCompatActivity() {
             }
             .setNegativeButton(R.string.auth_later, null)
             .show()
+    }
+
+    /** Show a diagnostic snapshot of peer-to-peer reach: how many devices are
+     *  bonded over Bluetooth (the only ones BluetoothMeshTransport will try to
+     *  reach), whether Wi-Fi is on for the UDP relay, and how to fix gaps. The
+     *  most common failure mode reported by users is "radios on, message lost":
+     *  having Bluetooth ENABLED is not enough — both phones must be PAIRED at the
+     *  OS level (Settings -> Bluetooth -> Pair new device) so the adapter exposes
+     *  them as bonded devices. This dialog tells them what to do. */
+    private fun showTransportDiagnostic() {
+        val btOn = isBluetoothOn()
+        val wifiOn = isWifiOn()
+        val bondedCount = try {
+            if (btOn && hasBluetoothConnectPermission()) {
+                (getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)
+                    ?.adapter?.bondedDevices?.size ?: 0
+            } else 0
+        } catch (_: SecurityException) {
+            0
+        }
+        val message = getString(R.string.chat_diag_message).format(
+            if (btOn) getString(R.string.chat_diag_on) else getString(R.string.chat_diag_off),
+            bondedCount,
+            if (wifiOn) getString(R.string.chat_diag_on) else getString(R.string.chat_diag_off),
+        )
+        AlertDialog.Builder(this)
+            .setTitle(R.string.chat_diag_title)
+            .setMessage(message)
+            .setPositiveButton(R.string.chat_diag_pair_device) { _, _ ->
+                openSettings(Settings.ACTION_BLUETOOTH_SETTINGS)
+            }
+            .setNegativeButton(R.string.auth_ok, null)
+            .show()
+    }
+
+    private fun hasBluetoothConnectPermission(): Boolean {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) return true
+        return androidx.core.content.ContextCompat.checkSelfPermission(
+            this, android.Manifest.permission.BLUETOOTH_CONNECT,
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
     }
 
     private fun isBluetoothOn(): Boolean =

@@ -119,11 +119,17 @@
 
     <!-- Sans-fil + arrière-plan -->
     <string name="chat_radios_title">Activer le sans-fil</string>
-    <string name="chat_enable_both">Pour la messagerie pair-à-pair, activez le Bluetooth et le Wi-Fi afin que vos messages atteignent les pairs proches. Le Bluetooth fonctionne sans internet.</string>
+    <string name="chat_enable_both">Pour la messagerie pair-à-pair, activez le Bluetooth et le Wi-Fi afin que vos messages atteignent les pairs proches. Le Bluetooth fonctionne sans internet.\n\nIMPORTANT : allumer le Bluetooth ne suffit pas — il faut aussi APPAIRER les deux téléphones dans les réglages Bluetooth (Appairer un nouvel appareil). Sans appairage au niveau système, evolIA ne peut pas atteindre le pair par Bluetooth.</string>
     <string name="chat_enable_bluetooth">Pour la messagerie hors-ligne, activez le Bluetooth afin que vos messages atteignent les pairs proches sans internet.</string>
     <string name="chat_enable_wifi">Activez le Wi-Fi pour que vos messages atteignent les pairs de votre réseau local.</string>
     <string name="chat_open_bluetooth_settings">Réglages Bluetooth</string>
     <string name="chat_open_wifi_settings">Réglages Wi-Fi</string>
+    <string name="chat_diag_button">Diagnostiquer le transport</string>
+    <string name="chat_diag_title">Portée pair-à-pair</string>
+    <string name="chat_diag_message">Bluetooth : %1$s\nPairs appairés : %2$d\nWi-Fi : %3$s\n\nPour la livraison par Bluetooth, le téléphone destinataire doit être APPAIRÉ au niveau système (Réglages → Bluetooth → Appairer un nouvel appareil). Avec 0 pair appairé, evolIA ne peut pas envoyer par Bluetooth — seul le relais LAN Wi-Fi peut atteindre le pair (les deux téléphones doivent être sur le même Wi-Fi).</string>
+    <string name="chat_diag_on">ACTIVÉ</string>
+    <string name="chat_diag_off">DÉSACTIVÉ</string>
+    <string name="chat_diag_pair_device">Appairer un appareil</string>
     <string name="auth_later">Plus tard</string>
     <string name="battery_opt_title">Garder evolIA actif</string>
     <string name="battery_opt_message">Pour continuer à accumuler de la valeur en arrière-plan, autorisez evolIA à fonctionner sans restriction de batterie. L\'app continue tant que vous n\'appuyez pas sur Arrêter.</string>

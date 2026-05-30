@@ -119,11 +119,17 @@
 
     <!-- Tariby tsy misy + ambadika -->
     <string name="chat_radios_title">Velomy ny tariby tsy misy</string>
-    <string name="chat_enable_both">Mba handefasana hafatra amin\'ny mpiara-belona, velomy ny Bluetooth sy ny Wi-Fi mba hahatongavan\'ny hafatrao amin\'ny mpiara-belona akaiky. Mandeha tsy misy aterineto ny Bluetooth.</string>
+    <string name="chat_enable_both">Mba handefasana hafatra amin\'ny mpiara-belona, velomy ny Bluetooth sy ny Wi-Fi mba hahatongavan\'ny hafatrao amin\'ny mpiara-belona akaiky. Mandeha tsy misy aterineto ny Bluetooth.\n\nZAVA-DEHIBE : tsy ampy ny mamelona ny Bluetooth — tokony AMPIFANDRAISINA (jereo \"Pair new device\" ao amin\'ny kirakira Bluetooth) koa ireo telefaona roa. Raha tsy mifandray ara-rafitra izy ireo, tsy afaka mandefa amin\'ny alalan\'ny Bluetooth i evolIA.</string>
     <string name="chat_enable_bluetooth">Mba handefasana hafatra tsy misy aterineto, velomy ny Bluetooth mba hahatongavan\'ny hafatrao amin\'ny mpiara-belona akaiky.</string>
     <string name="chat_enable_wifi">Velomy ny Wi-Fi mba hahatongavan\'ny hafatrao amin\'ny mpiara-belona ao amin\'ny tambajotrao.</string>
     <string name="chat_open_bluetooth_settings">Kirakira Bluetooth</string>
     <string name="chat_open_wifi_settings">Kirakira Wi-Fi</string>
+    <string name="chat_diag_button">Diagnostika ny fitateram-pifandraisana</string>
+    <string name="chat_diag_title">Halaviran\'ny mpiara-belona</string>
+    <string name="chat_diag_message">Bluetooth : %1$s\nMpiara-belona mifandray : %2$d\nWi-Fi : %3$s\n\nMba hahatongavan\'ny hafatra amin\'ny alalan\'ny Bluetooth, tokony AMPIFANDRAISINA ara-rafitra ny telefaona mpandray (Kirakira → Bluetooth → Pair new device). Raha tsy misy mpiara-belona mifandray (0), tsy afaka mandefa amin\'ny alalan\'ny Bluetooth i evolIA — ny relais Wi-Fi LAN ihany no afaka mahatratra ny mpiara-belona (tokony eo amin\'ny Wi-Fi iray ireo telefaona roa).</string>
+    <string name="chat_diag_on">VELONA</string>
+    <string name="chat_diag_off">MATY</string>
+    <string name="chat_diag_pair_device">Hampifandray fitaovana</string>
     <string name="auth_later">Aoriana</string>
     <string name="battery_opt_title">Avelao handeha foana i evolIA</string>
     <string name="battery_opt_message">Mba hanohizana ny fanangonana sanda any ambadika, avelao i evolIA handeha tsy misy fameperana bateria. Mitohy izy mandra-pitsindrianao ny AÀTO.</string>

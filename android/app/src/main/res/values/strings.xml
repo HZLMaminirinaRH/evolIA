@@ -119,11 +119,17 @@
 
     <!-- Wireless prompts + background -->
     <string name="chat_radios_title">Turn on wireless</string>
-    <string name="chat_enable_both">For peer messaging, turn on Bluetooth and Wi-Fi so your messages can reach nearby peers. Bluetooth works with no internet.</string>
+    <string name="chat_enable_both">For peer messaging, turn on Bluetooth and Wi-Fi so your messages can reach nearby peers. Bluetooth works with no internet.\n\nIMPORTANT: turning Bluetooth on is not enough — you must also PAIR the two phones in Bluetooth settings (Pair new device). Without OS-level pairing, evolIA cannot reach the peer over Bluetooth.</string>
     <string name="chat_enable_bluetooth">For offline peer messaging, turn on Bluetooth so your messages can reach nearby peers without internet.</string>
     <string name="chat_enable_wifi">Turn on Wi-Fi so your messages can reach peers on your local network.</string>
     <string name="chat_open_bluetooth_settings">Bluetooth settings</string>
     <string name="chat_open_wifi_settings">Wi-Fi settings</string>
+    <string name="chat_diag_button">Diagnose transport</string>
+    <string name="chat_diag_title">Peer-to-peer reach</string>
+    <string name="chat_diag_message">Bluetooth: %1$s\nPaired peers: %2$d\nWi-Fi: %3$s\n\nFor Bluetooth delivery, the recipient phone must be PAIRED at the OS level (Settings → Bluetooth → Pair new device). With 0 paired peers, evolIA cannot send over Bluetooth — only the Wi-Fi LAN relay can reach the peer (both phones must be on the same Wi-Fi).</string>
+    <string name="chat_diag_on">ON</string>
+    <string name="chat_diag_off">OFF</string>
+    <string name="chat_diag_pair_device">Pair a device</string>
     <string name="auth_later">Later</string>
     <string name="battery_opt_title">Keep evolIA running</string>
     <string name="battery_opt_message">To keep accumulating value in the background, allow evolIA to run without battery restrictions. It keeps running until you press Stop.</string>
