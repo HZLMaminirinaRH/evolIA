@@ -135,6 +135,13 @@ class MainActivity : AppCompatActivity() {
             text = getString(R.string.btn_receive)
             setOnClickListener { promptReceive() }
         }
+        // Pointing evolIA at a blockchain node is a sensitive owner action (it
+        // decides which RPC the app trusts), so it's behind the same 3-layer auth
+        // as Start/Transfer, and the inputs are strictly validated before saving.
+        val chainConfig = Button(this).apply {
+            text = getString(R.string.btn_chain_config)
+            setOnClickListener { authenticate(allowSetup = false) { promptChainConfig() } }
+        }
 
         val copyright = copyrightFooter(this)
 
@@ -148,6 +155,7 @@ class MainActivity : AppCompatActivity() {
                 addView(convertBtc)
                 addView(transfer)
                 addView(receive)
+                addView(chainConfig)
                 addView(chat)
                 addView(compass)
                 addView(refresh)
@@ -432,9 +440,22 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // --- on-chain transfer / receive ----------------------------------------
+    // --- on-chain transfer / receive + P2P local transfer --------------------
 
     private fun promptTransfer() {
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.transfer_choice_title))
+            .setMessage(getString(R.string.transfer_choice_message))
+            .setPositiveButton(getString(R.string.transfer_choice_onchain)) { _, _ ->
+                promptOnchainTransfer()
+            }
+            .setNegativeButton(getString(R.string.transfer_choice_local)) { _, _ ->
+                promptLocalTransfer()
+            }
+            .show()
+    }
+
+    private fun promptOnchainTransfer() {
         val toInput = EditText(this).apply {
             hint = getString(R.string.transfer_to_hint)
             inputType = InputType.TYPE_CLASS_TEXT
@@ -465,6 +486,48 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun promptLocalTransfer() {
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.transfer_local_title))
+            .setMessage(getString(R.string.transfer_local_warning))
+            .setPositiveButton(getString(R.string.auth_ok)) { _, _ ->
+                promptLocalTransferDetails()
+            }
+            .setNegativeButton(getString(R.string.auth_cancel), null)
+            .show()
+    }
+
+    private fun promptLocalTransferDetails() {
+        val toInput = EditText(this).apply {
+            hint = getString(R.string.transfer_to_hint)
+            inputType = InputType.TYPE_CLASS_TEXT
+        }
+        val amountInput = EditText(this).apply {
+            hint = getString(R.string.transfer_amount_hint)
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+        }
+        val form = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 24, 48, 0)
+            addView(toInput)
+            addView(amountInput)
+        }
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.transfer_local_record))
+            .setView(form)
+            .setPositiveButton(getString(R.string.auth_ok)) { _, _ ->
+                val to = toInput.text.toString().trim()
+                val amount = amountInput.text.toString().trim().toDoubleOrNull()
+                if (to.isEmpty() || amount == null || amount <= 0.0) {
+                    toast(getString(R.string.transfer_invalid))
+                } else {
+                    doLocalTransfer(to, amount)
+                }
+            }
+            .setNegativeButton(getString(R.string.auth_cancel), null)
+            .show()
+    }
+
     private fun doTransfer(to: String, amountCenti: Long) {
         val paths = EvoliaPaths(File(filesDir, "evolia"))
         toast(getString(R.string.msg_transfer_sending))
@@ -482,6 +545,36 @@ class MainActivity : AppCompatActivity() {
         "success" -> getString(R.string.msg_transfer_success).format(result.optDouble("amount_btce"), result.optString("to"))
         "local" -> getString(R.string.msg_transfer_local).format(result.optString("note"))
         else -> getString(R.string.msg_transfer_failed).format(result.optString("error", result.optString("note")))
+    }
+
+    private fun doLocalTransfer(to: String, amountBtce: Double) {
+        val paths = EvoliaPaths(File(filesDir, "evolia"))
+        // A local (unsigned, non-on-chain) transfer is a peer-to-peer promise:
+        // documented locally, signed by owner auth (happened above), but with no
+        // blockchain settlement. At risk if the peer doesn't honor it, but faster
+        // and works offline. The mesh's adaptive defense will catch malicious
+        // double-spends and replay attempts if peers share these records.
+        Thread {
+            try {
+                val entry = JSONObject()
+                    .put("timestamp", System.currentTimeMillis())
+                    .put("to", to)
+                    .put("amount_btce", amountBtce)
+                    .put("status", "local_promise")
+                    .put("mode", "offline")
+                paths.home.mkdirs()
+                val file = File(paths.home, "evolia_local_transfers.jsonl")
+                file.appendText(entry.toString() + "\n")
+                runOnUiThread {
+                    toast(getString(R.string.msg_transfer_local_recorded).format(amountBtce, to))
+                    updateStatus()
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    toast(getString(R.string.msg_transfer_local_failed).format(e.message))
+                }
+            }
+        }.start()
     }
 
     private fun isValidEthAddress(addr: String): Boolean = addr.matches(Regex("^0x[0-9a-fA-F]{40}$"))
@@ -514,6 +607,90 @@ class MainActivity : AppCompatActivity() {
                 toast(getString(R.string.msg_copied))
             }
             .show()
+    }
+
+    // --- on-chain RPC config -------------------------------------------------
+
+    private fun promptChainConfig() {
+        val paths = EvoliaPaths(File(filesDir, "evolia"))
+        val existing = readChainConfig(paths)
+        val rpcInput = EditText(this).apply {
+            hint = getString(R.string.chain_config_rpc_hint)
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+            setText(existing?.optString("rpc_url").orEmpty())
+        }
+        val chainIdInput = EditText(this).apply {
+            hint = getString(R.string.chain_config_chainid_hint)
+            inputType = InputType.TYPE_CLASS_NUMBER
+            val cid = existing?.optLong("chain_id", 0L) ?: 0L
+            if (cid > 0L) setText(cid.toString())
+        }
+        val form = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 24, 48, 0)
+            addView(rpcInput)
+            addView(chainIdInput)
+        }
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.chain_config_title))
+            .setView(form)
+            .setPositiveButton(getString(R.string.auth_ok)) { _, _ ->
+                saveChainConfig(paths, rpcInput.text.toString(), chainIdInput.text.toString())
+            }
+            .setNegativeButton(getString(R.string.auth_cancel), null)
+            .show()
+    }
+
+    private fun saveChainConfig(paths: EvoliaPaths, rpcRaw: String, chainIdRaw: String) {
+        val rpc = rpcRaw.trim()
+        if (!isValidRpcUrl(rpc)) {
+            toast(getString(R.string.chain_config_invalid_url))
+            return
+        }
+        val chainId = chainIdRaw.trim().toLongOrNull()
+        if (chainId == null || chainId <= 0L) {
+            toast(getString(R.string.chain_config_invalid_chainid))
+            return
+        }
+        // Preserve any other keys (e.g. sensory_type) the file may already carry.
+        val json = readChainConfig(paths) ?: JSONObject()
+        json.put("rpc_url", rpc)
+        json.put("chain_id", chainId)
+        paths.home.mkdirs()
+        // Atomic write (temp + rename), mirroring the rest of the state layer.
+        val tmp = File(paths.home, "evolia_chain_config.json.tmp")
+        tmp.writeText(json.toString())
+        tmp.renameTo(paths.chainConfig)
+        toast(getString(R.string.chain_config_saved))
+        updateStatus()
+    }
+
+    private fun readChainConfig(paths: EvoliaPaths): JSONObject? {
+        if (!paths.chainConfig.exists()) return null
+        return try {
+            JSONObject(paths.chainConfig.readText())
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Hardening on the one user-supplied URL evolIA will actually dial. Accept
+     * ONLY an http/https endpoint with a real host — no javascript:/file:/data:
+     * schemes, no whitespace or control characters, bounded length. http is kept
+     * because a local test node (Option C in the guide) is reached over plain
+     * http on the LAN; everything else stays out.
+     */
+    private fun isValidRpcUrl(url: String): Boolean {
+        if (url.isEmpty() || url.length > 2048) return false
+        if (url.any { it.isWhitespace() || Character.isISOControl(it) }) return false
+        val lower = url.lowercase()
+        if (!(lower.startsWith("http://") || lower.startsWith("https://"))) return false
+        return try {
+            !java.net.URI(url).host.isNullOrBlank()
+        } catch (_: Exception) {
+            false
+        }
     }
 
     private companion object {

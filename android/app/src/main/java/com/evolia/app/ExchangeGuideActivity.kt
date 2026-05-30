@@ -2,6 +2,10 @@ package com.evolia.app
 
 import android.graphics.Typeface
 import android.os.Bundle
+import android.text.Layout
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.style.LeadingMarginSpan
 import android.view.Gravity
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -92,6 +96,27 @@ class ExchangeGuideActivity : AppCompatActivity() {
         linksClickable = false
         textSize = 15f
         setLineSpacing(8f, 1f)
-        text = content
+        justificationMode = Layout.JUSTIFICATION_MODE_INTER_WORD
+        text = indentParagraphs(content)
+    }
+
+    // A small indent at the start of each paragraph (blocks split on blank
+    // lines), so the justified body reads like a printed page.
+    private fun indentParagraphs(content: String): CharSequence {
+        val indent = (22 * resources.displayMetrics.density).toInt()
+        val out = SpannableStringBuilder()
+        val blocks = content.split("\n\n")
+        blocks.forEachIndexed { i, block ->
+            val start = out.length
+            out.append(block)
+            out.setSpan(
+                LeadingMarginSpan.Standard(indent, 0),
+                start,
+                out.length,
+                Spanned.SPAN_INCLUSIVE_EXCLUSIVE,
+            )
+            if (i < blocks.lastIndex) out.append("\n\n")
+        }
+        return out
     }
 }
