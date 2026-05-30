@@ -17,6 +17,7 @@ import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.method.LinkMovementMethod
 import android.text.style.ClickableSpan
+import android.view.View
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -292,8 +293,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun promptPin(store: AuthStore, attempts: Int = MAX_ATTEMPTS, onCancel: () -> Unit = {}, onOk: () -> Unit) {
         promptSecret(getString(R.string.auth_pin), numeric = true, onCancel = onCancel) { pin ->
+            val ok = try { store.verifyPin(pin) } catch (_: Exception) { false }
             when {
-                try { store.verifyPin(pin) } catch (_: Exception) { false } -> onOk()
+                ok -> onOk()
                 attempts > 1 -> {
                     toast(getString(R.string.msg_pin_incorrect).format(attempts - 1))
                     promptPin(store, attempts - 1, onCancel, onOk)
@@ -305,8 +307,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun promptPassword(store: AuthStore, attempts: Int = MAX_ATTEMPTS, onCancel: () -> Unit = {}, onOk: (String) -> Unit) {
         promptSecret(getString(R.string.auth_password), numeric = false, onCancel = onCancel) { pw ->
+            val ok = try { store.verifyPassword(pw) } catch (_: Exception) { false }
             when {
-                try { store.verifyPassword(pw) } catch (_: Exception) { false } -> onOk(pw)
+                ok -> onOk(pw)
                 attempts > 1 -> {
                     toast(getString(R.string.msg_password_incorrect).format(attempts - 1))
                     promptPassword(store, attempts - 1, onCancel, onOk)
