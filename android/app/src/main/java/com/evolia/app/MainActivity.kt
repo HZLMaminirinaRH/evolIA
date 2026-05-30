@@ -620,13 +620,17 @@ class MainActivity : AppCompatActivity() {
                     return@Thread
                 }
                 // Deduct from local balance immediately (off-chain promise is risky but recorded).
-                val valueState = EvoliaValue.load(paths) ?: EvoliaValue(
-                    totalV = 0.0,
-                    cycleCount = 0,
-                    lastSyncUnix = System.currentTimeMillis() / 1000
-                )
-                valueState.totalV = (valueState.totalV - amountBtce).coerceAtLeast(0.0)
-                valueState.save(paths)
+                val valueState = EvoliaValue(paths)
+                valueState.load()
+                // Safely deduct the amount (clamp to zero to avoid negative balances).
+                var currentBalance = Dashboard.collect(paths).personal.totalV
+                currentBalance = (currentBalance - amountBtce).coerceAtLeast(0.0)
+                // Record the deduction by directly updating the value state.
+                val stateJson = JSONObject()
+                    .put("total_v", currentBalance)
+                    .put("cycle_count", valueState.cycleCount)
+                paths.home.mkdirs()
+                paths.valueState.writeText(stateJson.toString(2))
 
                 val entry = JSONObject()
                     .put("timestamp", System.currentTimeMillis())

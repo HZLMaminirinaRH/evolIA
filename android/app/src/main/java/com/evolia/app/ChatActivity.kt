@@ -25,6 +25,7 @@ import com.evolia.app.chat.ChatIdentityStore
 import com.evolia.app.chat.ChatManager
 import com.evolia.app.chat.ChatStore
 import com.evolia.app.core.ActionQueue
+import com.evolia.app.core.Dashboard
 import com.evolia.app.core.EvoliaPaths
 import com.evolia.app.core.EvoliaValue
 import com.evolia.app.ui.TransferNotify
@@ -277,13 +278,14 @@ class ChatActivity : AppCompatActivity() {
             try {
                 val paths = EvoliaPaths(File(filesDir, "evolia"))
                 // Add to local balance and record the received transfer.
-                val valueState = EvoliaValue.load(paths) ?: EvoliaValue(
-                    totalV = 0.0,
-                    cycleCount = 0,
-                    lastSyncUnix = System.currentTimeMillis() / 1000
-                )
-                valueState.totalV += xfer.amountBtce
-                valueState.save(paths)
+                var currentBalance = Dashboard.collect(paths).personal.totalV
+                currentBalance += xfer.amountBtce
+                // Update the value state with the new balance.
+                val stateJson = JSONObject()
+                    .put("total_v", currentBalance)
+                    .put("cycle_count", Dashboard.collect(paths).personal.cycleCount)
+                paths.home.mkdirs()
+                paths.valueState.writeText(stateJson.toString(2))
 
                 val entry = JSONObject()
                     .put("timestamp", System.currentTimeMillis())
