@@ -107,20 +107,28 @@ class MainActivity : AppCompatActivity() {
         val recordVideo = Button(this).apply {
             text = getString(R.string.btn_actions)
             setOnClickListener {
-                ActionQueue.enqueue(EvoliaPaths(File(filesDir, "evolia")), "video_taken")
-                toast(getString(R.string.msg_action_recorded))
+                try {
+                    ActionQueue.enqueue(EvoliaPaths(File(filesDir, "evolia")), "video_taken")
+                    toast(getString(R.string.msg_action_recorded))
+                } catch (e: Exception) {
+                    toast("Failed to record action: ${e.message ?: "unknown error"}")
+                }
             }
         }
         val convertBtc = Button(this).apply {
             text = getString(R.string.btn_convert)
             setOnClickListener {
-                val paths = EvoliaPaths(File(filesDir, "evolia"))
-                val bridge = BitcoinBridge(paths)
-                bridge.load()
-                val v = Dashboard.collect(paths).personal.totalV
-                val conv = bridge.queueConversion(v)
-                toast(getString(R.string.msg_conversion).format(v, conv.optLong("sat")))
-                updateStatus()
+                try {
+                    val paths = EvoliaPaths(File(filesDir, "evolia"))
+                    val bridge = BitcoinBridge(paths)
+                    bridge.load()
+                    val v = Dashboard.collect(paths).personal.totalV
+                    val conv = bridge.queueConversion(v)
+                    toast(getString(R.string.msg_conversion).format(v, conv.optLong("sat")))
+                    updateStatus()
+                } catch (e: Exception) {
+                    toast("Failed to queue conversion: ${e.message ?: "unknown error"}")
+                }
             }
         }
         // On-chain BTC-e transfer between owners — gated by the strict owner auth
@@ -189,8 +197,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateStatus() {
-        status.text = buildStatusText()
-        status.movementMethod = LinkMovementMethod.getInstance()
+        try {
+            status.text = buildStatusText()
+            status.movementMethod = LinkMovementMethod.getInstance()
+        } catch (e: Exception) {
+            status.text = "Failed to load status: ${e.message ?: "unknown error"}"
+        }
     }
 
     private fun isEvoliaRunning(): Boolean {
@@ -227,27 +239,31 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun onAuthenticated(password: String) {
-        val store = AuthStore(EvoliaPaths(File(filesDir, "evolia")))
-        store.markAuthed()
-        val deviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)
-            ?: "android-device"
-        val token = Security(deviceId, password).generateSessionToken("owner", SESSION_SECS).token
-        // Fleet key (password-derived) so the Go mesh layer signs/verifies blocks
-        // across this owner's devices.
-        val meshKey = Security.deriveFleetKey(password)
+        try {
+            val store = AuthStore(EvoliaPaths(File(filesDir, "evolia")))
+            store.markAuthed()
+            val deviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)
+                ?: "android-device"
+            val token = Security(deviceId, password).generateSessionToken("owner", SESSION_SECS).token
+            // Fleet key (password-derived) so the Go mesh layer signs/verifies blocks
+            // across this owner's devices.
+            val meshKey = Security.deriveFleetKey(password)
 
-        val paths = EvoliaPaths(File(filesDir, "evolia"))
-        paths.home.mkdirs()
-        paths.sessionState.writeText(
-            JSONObject()
-                .put("token", token)
-                .put("device_id", deviceId)
-                .put("mesh_key", meshKey)
-                .toString(),
-        )
+            val paths = EvoliaPaths(File(filesDir, "evolia"))
+            paths.home.mkdirs()
+            paths.sessionState.writeText(
+                JSONObject()
+                    .put("token", token)
+                    .put("device_id", deviceId)
+                    .put("mesh_key", meshKey)
+                    .toString(),
+            )
 
-        pendingStart = true
-        startWithPermissions.launch(neededPermissions())
+            pendingStart = true
+            startWithPermissions.launch(neededPermissions())
+        } catch (e: Exception) {
+            toast("Failed to initialize session: ${e.message ?: "unknown error"}")
+        }
     }
 
     private fun promptSetup(store: AuthStore, onCancel: () -> Unit, onDone: (String) -> Unit) {
@@ -260,9 +276,13 @@ class MainActivity : AppCompatActivity() {
                         toast(getString(R.string.msg_password_invalid))
                     } else {
                         confirm(getString(R.string.setup_biometric), onCancel = onCancel) { bio ->
-                            store.setup(pin, pw, bio)
-                            toast(getString(R.string.msg_auth_configured))
-                            onDone(pw)
+                            try {
+                                store.setup(pin, pw, bio)
+                                toast(getString(R.string.msg_auth_configured))
+                                onDone(pw)
+                            } catch (e: Exception) {
+                                toast("Auth setup failed: ${e.message ?: "unknown error"}")
+                            }
                         }
                     }
                 }
@@ -273,7 +293,7 @@ class MainActivity : AppCompatActivity() {
     private fun promptPin(store: AuthStore, attempts: Int = MAX_ATTEMPTS, onCancel: () -> Unit = {}, onOk: () -> Unit) {
         promptSecret(getString(R.string.auth_pin), numeric = true, onCancel = onCancel) { pin ->
             when {
-                store.verifyPin(pin) -> onOk()
+                try { store.verifyPin(pin) } catch (_: Exception) { false } -> onOk()
                 attempts > 1 -> {
                     toast(getString(R.string.msg_pin_incorrect).format(attempts - 1))
                     promptPin(store, attempts - 1, onCancel, onOk)
@@ -286,7 +306,7 @@ class MainActivity : AppCompatActivity() {
     private fun promptPassword(store: AuthStore, attempts: Int = MAX_ATTEMPTS, onCancel: () -> Unit = {}, onOk: (String) -> Unit) {
         promptSecret(getString(R.string.auth_password), numeric = false, onCancel = onCancel) { pw ->
             when {
-                store.verifyPassword(pw) -> onOk(pw)
+                try { store.verifyPassword(pw) } catch (_: Exception) { false } -> onOk(pw)
                 attempts > 1 -> {
                     toast(getString(R.string.msg_password_incorrect).format(attempts - 1))
                     promptPassword(store, attempts - 1, onCancel, onOk)
