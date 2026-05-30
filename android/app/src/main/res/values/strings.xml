@@ -55,6 +55,15 @@
     <string name="chat_no_contact">Pick a contact first.</string>
     <string name="chat_no_contacts">(no contacts)</string>
     <string name="chat_send_failed">Invalid key — send failed.</string>
+    <string name="chat_send_failed_some">Send failed for: %s</string>
+    <string name="chat_recipients_none">Recipients: (none — tap to pick)</string>
+    <string name="chat_recipients_label">Recipients: %s</string>
+    <string name="chat_recipients_pick">Choose recipients</string>
+    <string name="chat_contact_fingerprint_label">Fingerprint: %s</string>
+    <string name="chat_contact_fingerprint_pending">Fingerprint: (paste the recipient\'s public key above)</string>
+    <string name="chat_notif_title">New message in evolIA</string>
+    <string name="chat_notif_content">From %s — tap to open the chat</string>
+    <string name="chat_channel_messages">Chat messages</string>
     <string name="chat_empty">No messages.</string>
     <string name="chat_inactive">evolIA stopped — messaging inactive (messages are erased on stop).</string>
     <string name="chat_me_prefix">me → %1$s: %2$s</string>

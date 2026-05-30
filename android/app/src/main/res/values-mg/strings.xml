@@ -55,6 +55,15 @@
     <string name="chat_no_contact">Mifidiana namana aloha.</string>
     <string name="chat_no_contacts">(tsy misy namana)</string>
     <string name="chat_send_failed">Lakile diso — tsy lasa.</string>
+    <string name="chat_send_failed_some">Tsy nahomby ny fandefasana ho an\'i : %s</string>
+    <string name="chat_recipients_none">Mpandray : (tsy misy — tsindrio hisafidy)</string>
+    <string name="chat_recipients_label">Mpandray : %s</string>
+    <string name="chat_recipients_pick">Safidio ny mpandray</string>
+    <string name="chat_contact_fingerprint_label">Famantarana : %s</string>
+    <string name="chat_contact_fingerprint_pending">Famantarana : (apetaho ery ambony ny lakile ampahibemason\'ny mpandray)</string>
+    <string name="chat_notif_title">Hafatra vaovao ao evolIA</string>
+    <string name="chat_notif_content">Avy amin\'i %s — tsindrio hanokafana ny chat</string>
+    <string name="chat_channel_messages">Hafatra chat</string>
     <string name="chat_empty">Tsy misy hafatra.</string>
     <string name="chat_inactive">evolIA nijanona — tsy mandeha ny hafatra (voafafa rehefa mijanona).</string>
     <string name="chat_me_prefix">izaho → %1$s: %2$s</string>

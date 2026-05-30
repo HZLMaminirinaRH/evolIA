@@ -10,16 +10,17 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
-import android.widget.ArrayAdapter
+import android.text.Editable
+import android.text.TextWatcher
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
-import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import com.evolia.app.chat.ChatIdentity
 import com.evolia.app.chat.ChatIdentityStore
 import com.evolia.app.chat.ChatManager
 import com.evolia.app.chat.ChatStore
@@ -41,11 +42,17 @@ class ChatActivity : AppCompatActivity() {
     private lateinit var manager: ChatManager
     private lateinit var store: ChatStore
     private lateinit var log: TextView
-    private lateinit var contactSpinner: Spinner
+    private lateinit var recipientsButton: Button
 
-    // Sent messages are not persisted in plaintext (the outbox holds only sealed
-    // bodies), so keep a session-local view for the conversation display.
-    private val sent = mutableListOf<String>()
+    // Multi-recipient: the sender picks one OR many contacts; the same plaintext
+    // is sealed once per recipient (each ECDH is per-pair) and queued to each.
+    private val selectedContacts = mutableListOf<ChatStore.Contact>()
+
+    // Sent messages: track message ID + recipient fingerprint for delivery status.
+    // The display string is paired with metadata so we can mark messages delivered
+    // when ACKs arrive. Ephemeral (purged when evolIA stops).
+    data class SentMessage(val display: String, val msgId: String, val recipientFp: String)
+    private val sent = mutableListOf<SentMessage>()
 
     private val refreshHandler = Handler(Looper.getMainLooper())
     private val refreshTick = object : Runnable {
@@ -83,8 +90,13 @@ class ChatActivity : AppCompatActivity() {
             text = getString(R.string.chat_remove_contact)
             setOnClickListener { promptRemoveContact() }
         }
-        contactSpinner = Spinner(this)
-        refreshContacts()
+        // Multi-recipient picker: tap to open a checkbox list of contacts; the
+        // button label shows who's currently selected, so the user can see who
+        // a message will go to before pressing Send.
+        recipientsButton = Button(this).apply {
+            setOnClickListener { promptRecipients() }
+        }
+        updateRecipientsLabel()
 
         log = TextView(this).apply {
             // Defence-in-depth: never auto-linkify received text, and never let a
@@ -112,7 +124,7 @@ class ChatActivity : AppCompatActivity() {
                 addView(shareId)
                 addView(addContact)
                 addView(removeContact)
-                addView(contactSpinner)
+                addView(recipientsButton)
                 addView(
                     scroll,
                     LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0).apply { weight = 1f },
@@ -146,30 +158,83 @@ class ChatActivity : AppCompatActivity() {
             toast(getString(R.string.chat_inactive))
             return
         }
-        val contact = selectedContact()
-        if (contact == null) {
+        if (selectedContacts.isEmpty()) {
             toast(getString(R.string.chat_no_contact))
             return
         }
-        if (manager.send(contact.bundleHex, text)) {
-            sent.add(getString(R.string.chat_me_prefix).format(sanitizeForDisplay(contact.name), sanitizeForDisplay(text)))
+        // Seal once per recipient (each pair has its own ECDH key). Track who
+        // succeeded so the user sees partial progress when one bundle is bad.
+        val failed = mutableListOf<String>()
+        for (c in selectedContacts) {
+            val msgId = manager.send(c.bundleHex, text)
+            if (msgId != null) {
+                // Resolve the recipient's fingerprint from the bundle.
+                val recipientFp = ChatIdentity.fingerprintFromBundle(c.bundleHex) ?: "?"
+                sent.add(
+                    SentMessage(
+                        display = getString(R.string.chat_me_prefix)
+                            .format(sanitizeForDisplay(c.name), sanitizeForDisplay(text)),
+                        msgId = msgId,
+                        recipientFp = recipientFp
+                    )
+                )
+            } else {
+                failed.add(sanitizeForDisplay(c.name))
+            }
+        }
+        if (failed.size < selectedContacts.size) {
+            // At least one recipient took the message — clear the composer.
             input.text.clear()
             renderLog()
-        } else {
-            toast(getString(R.string.chat_send_failed))
+        }
+        if (failed.isNotEmpty()) {
+            toast(getString(R.string.chat_send_failed_some).format(failed.joinToString(", ")))
         }
     }
 
-    private fun selectedContact(): ChatStore.Contact? =
-        store.contacts().getOrNull(contactSpinner.selectedItemPosition)
+    private fun updateRecipientsLabel() {
+        val names = selectedContacts.joinToString(", ") { sanitizeForDisplay(it.name) }
+        recipientsButton.text = if (names.isEmpty()) {
+            getString(R.string.chat_recipients_none)
+        } else {
+            getString(R.string.chat_recipients_label).format(names)
+        }
+    }
+
+    private fun promptRecipients() {
+        val all = store.contacts()
+        if (all.isEmpty()) {
+            toast(getString(R.string.chat_no_contacts))
+            return
+        }
+        // Build the checked-list dialog: each entry shows the name + the 8-char
+        // fingerprint prefix so the user can disambiguate two contacts with the
+        // same chosen name (since name is just a local label).
+        val labels = all.map { c ->
+            val fp = ChatIdentity.fingerprintFromBundle(c.bundleHex)?.take(8) ?: "?"
+            "${sanitizeForDisplay(c.name)}  ($fp…)"
+        }.toTypedArray()
+        val checked = BooleanArray(all.size) { i ->
+            selectedContacts.any { it.bundleHex == all[i].bundleHex }
+        }
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.chat_recipients_pick))
+            .setMultiChoiceItems(labels, checked) { _, i, isChecked -> checked[i] = isChecked }
+            .setPositiveButton(getString(R.string.auth_ok)) { _, _ ->
+                selectedContacts.clear()
+                for (i in all.indices) if (checked[i]) selectedContacts.add(all[i])
+                updateRecipientsLabel()
+            }
+            .setNegativeButton(getString(R.string.auth_cancel), null)
+            .show()
+    }
 
     private fun refreshContacts() {
-        val names = store.contacts().map { it.name }
-        contactSpinner.adapter = ArrayAdapter(
-            this,
-            android.R.layout.simple_spinner_dropdown_item,
-            names.ifEmpty { listOf(getString(R.string.chat_no_contacts)) },
-        )
+        // A removed contact must drop out of the active recipient set so the next
+        // send doesn't try to seal to a vanished bundle.
+        val live = store.contacts().map { it.bundleHex }.toSet()
+        selectedContacts.removeAll { it.bundleHex !in live }
+        updateRecipientsLabel()
     }
 
     private fun renderLog() {
@@ -182,15 +247,27 @@ class ChatActivity : AppCompatActivity() {
             return
         }
         val sb = StringBuilder()
+        val delivered = manager.getDeliveredMessageIds()
         // Sanitize per field (before the separators) so a received message can't
         // inject control chars, fake newlines, or bidi-spoof the conversation.
-        manager.inbox().forEach {
-            sb.append(sanitizeForDisplay(it.senderFingerprint.take(8)))
+        manager.inbox().forEach { received ->
+            sb.append(sanitizeForDisplay(received.senderFingerprint.take(8)))
                 .append(" > ")
-                .append(sanitizeForDisplay(it.text))
+                .append(sanitizeForDisplay(received.text))
                 .append("\n")
+            // Auto-send ACK back to sender to confirm delivery.
+            // The ACK envelope carries the original message ID, and the sender
+            // decrypts + marks it delivered. Idempotent: re-queueing a duplicate
+            // ACK is harmless (relay dedups by id).
+            manager.sendAck(received.senderFingerprint, received.messageId)
         }
-        sent.forEach { sb.append(it).append("\n") }
+        sent.forEach { msg ->
+            sb.append(msg.display)
+            if (msg.msgId in delivered) {
+                sb.append(" ✓")
+            }
+            sb.append("\n")
+        }
         log.text = if (sb.isEmpty()) getString(R.string.chat_empty) else sb.toString()
     }
 
@@ -207,10 +284,34 @@ class ChatActivity : AppCompatActivity() {
     private fun promptAddContact() {
         val name = EditText(this).apply { hint = getString(R.string.chat_contact_name) }
         val bundle = EditText(this).apply { hint = getString(R.string.chat_contact_bundle) }
+        // Live fingerprint preview: as the user pastes the 128-char public key,
+        // derive its 16-char fingerprint and show it. The name above is just a
+        // local label — what actually routes a message is THIS fingerprint, so
+        // surfacing it stops users from confusing the two.
+        val fingerprintLabel = TextView(this).apply {
+            textSize = 13f
+            alpha = 0.7f
+            setPadding(0, 16, 0, 0)
+            text = getString(R.string.chat_contact_fingerprint_pending)
+        }
+        bundle.addTextChangedListener(object : TextWatcher {
+            override fun afterTextChanged(s: Editable?) {
+                val b = s?.toString()?.trim().orEmpty()
+                val fp = if (b.isEmpty()) null else ChatIdentity.fingerprintFromBundle(b)
+                fingerprintLabel.text = if (fp != null) {
+                    getString(R.string.chat_contact_fingerprint_label).format(fp)
+                } else {
+                    getString(R.string.chat_contact_fingerprint_pending)
+                }
+            }
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+        })
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(name)
             addView(bundle)
+            addView(fingerprintLabel)
         }
         AlertDialog.Builder(this)
             .setTitle(getString(R.string.chat_add_contact))
@@ -235,20 +336,36 @@ class ChatActivity : AppCompatActivity() {
     }
 
     private fun promptRemoveContact() {
-        val contact = selectedContact()
-        if (contact == null) {
-            toast(getString(R.string.chat_no_contact))
+        val all = store.contacts()
+        if (all.isEmpty()) {
+            toast(getString(R.string.chat_no_contacts))
             return
         }
+        // No longer driven by a single "selected" contact — let the user pick
+        // which entry to drop from a list, then confirm.
+        val labels = all.map { c ->
+            val fp = ChatIdentity.fingerprintFromBundle(c.bundleHex)?.take(8) ?: "?"
+            "${sanitizeForDisplay(c.name)}  ($fp…)"
+        }.toTypedArray()
         AlertDialog.Builder(this)
             .setTitle(getString(R.string.chat_remove_contact))
-            .setMessage(getString(R.string.chat_remove_contact_confirm).format(sanitizeForDisplay(contact.name)))
-            .setPositiveButton(getString(R.string.auth_yes)) { _, _ ->
-                manager.removeContact(contact.bundleHex)
-                refreshContacts()
-                toast(getString(R.string.chat_contact_removed))
+            .setItems(labels) { _, i ->
+                val target = all[i]
+                AlertDialog.Builder(this)
+                    .setTitle(getString(R.string.chat_remove_contact))
+                    .setMessage(
+                        getString(R.string.chat_remove_contact_confirm)
+                            .format(sanitizeForDisplay(target.name)),
+                    )
+                    .setPositiveButton(getString(R.string.auth_yes)) { _, _ ->
+                        manager.removeContact(target.bundleHex)
+                        refreshContacts()
+                        toast(getString(R.string.chat_contact_removed))
+                    }
+                    .setNegativeButton(getString(R.string.auth_no), null)
+                    .show()
             }
-            .setNegativeButton(getString(R.string.auth_no), null)
+            .setNegativeButton(getString(R.string.auth_cancel), null)
             .show()
     }
 

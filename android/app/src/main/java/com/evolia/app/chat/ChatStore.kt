@@ -16,16 +16,22 @@ import java.io.File
 class ChatStore(private val paths: EvoliaPaths) {
 
     /** The routing envelope around an opaque, end-to-end-sealed body. Mirrors the
-     *  Go chat.Message fields exactly so both sides read the same lines. */
-    data class Wire(val id: String, val to: String, val from: String, val ts: String, val body: String) {
+     *  Go chat.Message fields exactly so both sides read the same lines. Type field
+     *  defaults to "msg" (message) for backwards compat; "ack" envelopes carry
+     *  delivery receipts from receiver back to sender. */
+    data class Wire(val id: String, val to: String, val from: String, val ts: String, val body: String, val type: String = "msg") {
         fun toJson(): String = JSONObject()
             .put("id", id).put("to", to).put("from", from).put("ts", ts).put("body", body)
+            .put("type", type)
             .toString()
 
         companion object {
             fun fromJson(line: String): Wire? = try {
                 val o = JSONObject(line)
-                val w = Wire(o.optString("id"), o.optString("to"), o.optString("from"), o.optString("ts"), o.optString("body"))
+                val w = Wire(
+                    o.optString("id"), o.optString("to"), o.optString("from"), o.optString("ts"), o.optString("body"),
+                    o.optString("type", "msg")
+                )
                 if (w.id.isEmpty() || w.body.isEmpty()) null else w
             } catch (_: Exception) {
                 null
@@ -139,5 +145,28 @@ class ChatStore(private val paths: EvoliaPaths) {
         val arr = JSONArray()
         filtered.forEach { arr.put(JSONObject().put("name", it.name).put("bundle", it.bundleHex)) }
         paths.chatContacts.writeText(arr.toString())
+    }
+
+    /** Queue an ACK envelope to acknowledge a received message to the sender. The
+     *  sealed body holds the original message id; the relay carries it back over
+     *  the same sealed channel, and the sender decrypts + marks the message delivered. */
+    fun enqueueAck(toFingerprint: String, messageId: String) {
+        val ack = Wire(
+            id = "ack_" + messageId,
+            to = toFingerprint,
+            from = "", // filled by ChatManager when sealing
+            ts = System.currentTimeMillis().toString(),
+            body = messageId, // the ACK body is the original message ID
+            type = "ack"
+        )
+        enqueue(ack)
+    }
+
+    /** Extract all ACK message IDs from the inbox (messages where type=="ack"),
+     *  marking them as delivery confirmations for the original messages. */
+    fun readAcks(): Set<String> {
+        return readInbox()
+            .filter { it.type == "ack" }
+            .mapTo(mutableSetOf()) { it.body } // body holds the original message id
     }
 }

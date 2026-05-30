@@ -3,6 +3,7 @@ package com.evolia.app
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -10,6 +11,7 @@ import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import com.evolia.app.chain.ChainAnchor
 import com.evolia.app.chat.BluetoothMeshTransport
 import com.evolia.app.chat.ChatIdentityStore
@@ -93,6 +95,11 @@ class EvoliaService : Service() {
         // Bluetooth mesh chat (Phase 2): peer-to-peer messaging with no internet
         // or WiFi. No-ops gracefully when Bluetooth is off/unpermitted.
         startBluetoothChat(home)
+
+        // Watch the chat inbox for new incoming envelopes and post a system
+        // notification on arrival, so the recipient sees a message even when
+        // the chat screen isn't open.
+        startChatNotifier(home)
 
         // Supervise the prebuilt Go binaries if they were packaged (Phase 1).
         val nativeDir = applicationInfo.nativeLibraryDir
@@ -194,6 +201,59 @@ class EvoliaService : Service() {
             .setOngoing(true)
             .build()
 
+    /**
+     * Periodically scan the chat inbox for new envelopes and pop a system
+     * notification per new sender. The relay (UDP or Bluetooth) fills the inbox
+     * file; the service is the only thing that runs continuously, so it's the
+     * right place to surface arrival. We only read the relay-visible "from"
+     * field (already in plaintext as a routing fingerprint), never decrypt — the
+     * notification just nudges the user to open the chat.
+     */
+    private fun startChatNotifier(home: File) = scope.launch {
+        val paths = EvoliaPaths(home)
+        val store = ChatStore(paths)
+        // Pre-seed with any envelopes already on disk so the user isn't spammed
+        // for messages they have already seen in an earlier session.
+        val seen = store.inboxIds().toMutableSet()
+        while (isActive) {
+            delay(CHAT_NOTIF_POLL_MS)
+            try {
+                val newFrom = mutableListOf<String>()
+                for (wire in store.readInbox()) {
+                    if (seen.add(wire.id)) newFrom.add(wire.from.take(8))
+                }
+                if (newFrom.isNotEmpty()) postChatNotification(newFrom)
+            } catch (_: Exception) {
+                // Best-effort — a transient IO error must not break the loop.
+            }
+        }
+    }
+
+    private fun postChatNotification(senders: List<String>) {
+        val openChat = PendingIntent.getActivity(
+            this,
+            0,
+            Intent(this, ChatActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            },
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val from = senders.distinct().joinToString(", ")
+        val notif = NotificationCompat.Builder(this, CHAT_CHANNEL_ID)
+            .setContentTitle(getString(R.string.chat_notif_title))
+            .setContentText(getString(R.string.chat_notif_content).format(from))
+            .setSmallIcon(android.R.drawable.ic_dialog_email)
+            .setAutoCancel(true)
+            .setContentIntent(openChat)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .build()
+        try {
+            NotificationManagerCompat.from(this).notify(CHAT_NOTIF_ID, notif)
+        } catch (_: SecurityException) {
+            // POST_NOTIFICATIONS not granted on API 33+ — silently skip.
+        }
+    }
+
     // Android ships a stripped-down BouncyCastle as the default "BC" provider,
     // which web3j's secp256k1 key generation chokes on. Replace it with the
     // bundled full provider before any on-chain crypto runs.
@@ -205,12 +265,21 @@ class EvoliaService : Service() {
 
     private fun createChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "evolIA",
-                NotificationManager.IMPORTANCE_LOW,
+            val nm = getSystemService(NotificationManager::class.java)
+            // Low-priority channel for the always-on supervisor notification: it
+            // must show but never make noise.
+            nm.createNotificationChannel(
+                NotificationChannel(CHANNEL_ID, "evolIA", NotificationManager.IMPORTANCE_LOW),
             )
-            getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+            // Default-priority channel for incoming chat messages: pops/vibrates
+            // so the user notices a peer message even when the app is closed.
+            nm.createNotificationChannel(
+                NotificationChannel(
+                    CHAT_CHANNEL_ID,
+                    getString(R.string.chat_channel_messages),
+                    NotificationManager.IMPORTANCE_DEFAULT,
+                ),
+            )
         }
     }
 
@@ -243,9 +312,14 @@ class EvoliaService : Service() {
 
     companion object {
         private const val CHANNEL_ID = "evolia"
+        private const val CHAT_CHANNEL_ID = "evolia_chat"
         private const val NOTIF_ID = 1
+        private const val CHAT_NOTIF_ID = 2
         private const val RESTART_BACKOFF_MS = 3000L
         private const val CYCLE_MS = 5000L
         private const val ANCHOR_MS = 30_000L
+        // Poll the chat inbox a bit more often than the value cycle so a peer
+        // message surfaces within a few seconds of arriving on the file system.
+        private const val CHAT_NOTIF_POLL_MS = 3000L
     }
 }

@@ -29,7 +29,8 @@ class ChatManagerTest {
         val (alice, pathsA) = manager()
         val (bob, pathsB) = manager()
 
-        assertTrue("seal to a valid bundle succeeds", alice.send(bob.myBundleHex, "salama Bob"))
+        val msgId = alice.send(bob.myBundleHex, "salama Bob")
+        assertNotNull("seal to a valid bundle succeeds", msgId)
         relay(pathsA, pathsB)
 
         val received = bob.inbox()
@@ -37,6 +38,7 @@ class ChatManagerTest {
         assertEquals("salama Bob", received[0].text)
         assertEquals("sender is Alice", alice.myFingerprint, received[0].senderFingerprint)
         assertEquals("sender bundle is discoverable", alice.myBundleHex, received[0].senderBundleHex)
+        assertEquals("message id is preserved", msgId, received[0].messageId)
     }
 
     @Test
@@ -49,7 +51,7 @@ class ChatManagerTest {
     @Test
     fun sendToInvalidBundleFails() {
         val (alice, _) = manager()
-        assertFalse(alice.send("not-a-valid-bundle", "hi"))
+        assertTrue("invalid bundle returns null", alice.send("not-a-valid-bundle", "hi") == null)
     }
 
     @Test
@@ -62,11 +64,11 @@ class ChatManagerTest {
         val bobPaths = EvoliaPaths(Files.createTempDirectory("evolia-chat-b").toFile())
         val bob = ChatManager(ChatIdentity.generate(), ChatStore(bobPaths))
 
-        assertTrue(alice.send(bob.myBundleHex, "salama"))
+        assertNotNull("send returns message id", alice.send(bob.myBundleHex, "salama"))
         assertEquals("a sent message is one sms_sent action", listOf("sms_sent" to 1), ActionQueue.drain(paths))
 
         // A rejected send (over cap) records no value.
-        alice.send(bob.myBundleHex, "x".repeat(ChatManager.MAX_MESSAGE_CHARS + 1))
+        assertTrue("over-cap returns null", alice.send(bob.myBundleHex, "x".repeat(ChatManager.MAX_MESSAGE_CHARS + 1)) == null)
         assertTrue(ActionQueue.drain(paths).isEmpty())
     }
 
@@ -74,9 +76,9 @@ class ChatManagerTest {
     fun enforcesMiniMessageLengthCap() {
         val (alice, _) = manager()
         val (bob, _) = manager()
-        assertFalse("empty is rejected", alice.send(bob.myBundleHex, ""))
-        assertFalse("over 480 chars is rejected", alice.send(bob.myBundleHex, "x".repeat(ChatManager.MAX_MESSAGE_CHARS + 1)))
-        assertTrue("exactly 480 chars is accepted", alice.send(bob.myBundleHex, "x".repeat(ChatManager.MAX_MESSAGE_CHARS)))
+        assertTrue("empty is rejected", alice.send(bob.myBundleHex, "") == null)
+        assertTrue("over 480 chars is rejected", alice.send(bob.myBundleHex, "x".repeat(ChatManager.MAX_MESSAGE_CHARS + 1)) == null)
+        assertNotNull("exactly 480 chars is accepted", alice.send(bob.myBundleHex, "x".repeat(ChatManager.MAX_MESSAGE_CHARS)))
     }
 
     @Test
@@ -87,7 +89,7 @@ class ChatManagerTest {
 
         // Alice seals to Carol, but the line is delivered to Bob's inbox: Bob
         // cannot open it (wrong key), so it is silently skipped.
-        assertTrue(alice.send(carol.myBundleHex, "for carol only"))
+        assertNotNull(alice.send(carol.myBundleHex, "for carol only"))
         relay(pathsA, pathsB)
         assertTrue("Bob cannot decrypt a message sealed for Carol", bob.inbox().isEmpty())
     }
@@ -97,7 +99,7 @@ class ChatManagerTest {
         val (alice, pathsA) = manager()
         val (bob, pathsB) = manager()
 
-        assertTrue(alice.send(bob.myBundleHex, "delivered twice"))
+        assertNotNull(alice.send(bob.myBundleHex, "delivered twice"))
         val line = pathsA.chatOutbox.readText().trim()
         // Same envelope arrives over two transports (UDP + Bluetooth).
         pathsB.chatInbox.appendText(line + "\n")
@@ -146,5 +148,52 @@ class ChatManagerTest {
         val back = ChatStore.Wire.fromJson(w.toJson())
         assertNotNull(back)
         assertEquals(w, back)
+    }
+
+    @Test
+    fun ackProtocolRoundtrip() {
+        val (alice, pathsA) = manager()
+        val (bob, pathsB) = manager()
+
+        // Alice sends a message to Bob.
+        val msgId = alice.send(bob.myBundleHex, "hello")
+        assertNotNull(msgId)
+        relay(pathsA, pathsB)
+
+        // Bob receives it and sends an ACK back.
+        val received = bob.inbox()
+        assertEquals(1, received.size)
+        assertTrue("ACKs are filtered from inbox", received[0].messageId == msgId)
+        assertTrue("sendAck queues an ACK envelope", bob.sendAck(alice.myFingerprint, msgId!!))
+
+        // Relay the ACK back to Alice.
+        val ackLine = pathsB.chatOutbox.readText().trim()
+        pathsA.chatInbox.appendText(ackLine + "\n")
+
+        // Alice reads the ACKs and finds the message marked delivered.
+        val delivered = alice.getDeliveredMessageIds()
+        assertTrue("Alice sees the message as delivered", msgId in delivered)
+    }
+
+    @Test
+    fun acksAreFilteredFromInbox() {
+        val (alice, pathsA) = manager()
+        val (bob, pathsB) = manager()
+
+        // Alice sends a message to Bob.
+        val msgId = alice.send(bob.myBundleHex, "hello")
+        relay(pathsA, pathsB)
+
+        // Bob receives it and sends an ACK back.
+        bob.sendAck(alice.myFingerprint, msgId!!)
+        relay(pathsB, pathsA)
+
+        // When Alice calls inbox(), ACK envelopes should be filtered out
+        // (they are handled separately via readAcks).
+        assertTrue("inbox() filters out ACK envelopes", alice.inbox().isEmpty())
+
+        // But getDeliveredMessageIds() should find the ACK and return the msgId.
+        val delivered = alice.getDeliveredMessageIds()
+        assertTrue("getDeliveredMessageIds() finds the ACK", msgId in delivered)
     }
 }

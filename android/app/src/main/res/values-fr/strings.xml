@@ -55,6 +55,15 @@
     <string name="chat_no_contact">Choisis d\'abord un contact.</string>
     <string name="chat_no_contacts">(aucun contact)</string>
     <string name="chat_send_failed">Clé invalide — envoi échoué.</string>
+    <string name="chat_send_failed_some">Échec de l\'envoi à : %s</string>
+    <string name="chat_recipients_none">Destinataires : (aucun — appuyez pour choisir)</string>
+    <string name="chat_recipients_label">Destinataires : %s</string>
+    <string name="chat_recipients_pick">Choisir les destinataires</string>
+    <string name="chat_contact_fingerprint_label">Empreinte : %s</string>
+    <string name="chat_contact_fingerprint_pending">Empreinte : (collez la clé publique du destinataire ci-dessus)</string>
+    <string name="chat_notif_title">Nouveau message dans evolIA</string>
+    <string name="chat_notif_content">De %s — appuyez pour ouvrir le chat</string>
+    <string name="chat_channel_messages">Messages du chat</string>
     <string name="chat_empty">Aucun message.</string>
     <string name="chat_inactive">evolIA arrêté — messagerie inactive (les messages sont effacés à l\'arrêt).</string>
     <string name="chat_me_prefix">moi → %1$s : %2$s</string>
