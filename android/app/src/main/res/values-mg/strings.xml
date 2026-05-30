@@ -2,7 +2,6 @@
     <string name="app_name">evolIA</string>
 
     <!-- Control panel buttons -->
-    <string name="btn_start">NDAO! Evolia</string>
     <string name="btn_stop">AÀTO!</string>
     <string name="btn_actions">ASA @ FINDAY (V)</string>
     <string name="btn_convert">EZAKA BTC-E VITA!</string>
@@ -74,7 +73,7 @@
     <string name="dashboard_onchain_help">(*)</string>
 
     <!-- Fanakalozana BTC-e on-chain -->
-    <string name="msg_auth_needed">Ametraho aloha ny fanamarinana tompony: tsindrio NDAO! Evolia.</string>
+    <string name="msg_auth_needed">Mbola tsy voadrindra ny fanamarinana tompony — sokafy indray i evolIA ka tanteraho aloha ny famaritana PIN sy tenimiafina.</string>
     <string name="transfer_choice_title">Ahoana ny fandefasana BTC-e?</string>
     <string name="transfer_choice_message">Safidio ny fihetsika fandefasana :\n\n• On-chain (torohevitra) : azo itokisana, final, voalamina blockchain, mila RPC\n• Local P2P (malalakoa) : amin\'ny mpiara-belona, tsy mila aterineto, tsy mila blockchain</string>
     <string name="transfer_choice_onchain">On-chain (azo itokisana)</string>

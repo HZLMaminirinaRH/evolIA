@@ -53,7 +53,8 @@ la plus rapide.
 L'auth est le point d'entrée : valide-la en premier.
 
 **Premier lancement (setup) :**
-1. Touche **Démarrer Evolia** → une boîte de dialogue PIN apparaît.
+1. Ouvre evolIA → la configuration PIN s'ouvre **automatiquement** (pas de bouton
+   Démarrer : ouvrir l'app EST le geste de démarrage).
 2. Saisis un PIN ; vérifie qu'elle refuse une entrée hors 4–6 chiffres.
 3. Saisis un mot de passe ; vérifie qu'elle refuse < 8 caractères.
 4. Choisis la biométrie oui/non.
@@ -62,9 +63,9 @@ L'auth est le point d'entrée : valide-la en premier.
    `$argon2id$v=19$...`, `owner: true`.
 
 **Lancements suivants (vérification) :**
-1. Touche **Démarrer** → invite PIN. Saisis un mauvais PIN → « incorrect, N
-   essai(s) restant(s) » ; après 3 → « Authentification échouée » (le service ne
-   démarre **pas**).
+1. Ouvre evolIA → l'invite PIN apparaît automatiquement. Saisis un mauvais PIN
+   → « incorrect, N essai(s) restant(s) » ; après 3 → « Authentification échouée »
+   (le service ne démarre **pas**).
 2. PIN correct → invite mot de passe (même comportement à 3 essais).
 3. Si la biométrie est activée → `BiometricPrompt` apparaît ; une empreinte
    enregistrée réussit. Sans empreinte enrôlée → « Biométrie indisponible —

@@ -2,7 +2,6 @@
     <string name="app_name">evolIA</string>
 
     <!-- Control panel buttons -->
-    <string name="btn_start">Start Evolia</string>
     <string name="btn_stop">Stop</string>
     <string name="btn_actions">Actions: V</string>
     <string name="btn_convert">Values V → BTC-e</string>
@@ -74,7 +73,7 @@
     <string name="dashboard_onchain_help">(*)</string>
 
     <!-- On-chain BTC-e exchange -->
-    <string name="msg_auth_needed">Set up owner auth first: press Start Evolia.</string>
+    <string name="msg_auth_needed">Owner auth not configured yet — reopen evolIA and complete the PIN/password setup first.</string>
     <string name="transfer_choice_title">How to transfer BTC-e?</string>
     <string name="transfer_choice_message">Choose a transfer mode:\n\n• On-chain (recommended): secure, final, blockchain-settled, requires RPC\n• Local P2P (at-risk): peer promise, offline-friendly, no blockchain needed</string>
     <string name="transfer_choice_onchain">On-chain (safe)</string>

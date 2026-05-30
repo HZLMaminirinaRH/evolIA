@@ -17,7 +17,6 @@ import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.method.LinkMovementMethod
 import android.text.style.ClickableSpan
-import android.view.View
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -57,7 +56,6 @@ import java.io.File
 class MainActivity : AppCompatActivity() {
 
     private lateinit var status: TextView
-    private lateinit var startButton: Button
     private var pendingStart = false
 
     // Live dashboard refresh while the activity is in the foreground.
@@ -87,10 +85,6 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         status = TextView(this)
 
-        startButton = Button(this).apply {
-            text = getString(R.string.btn_start)
-            setOnClickListener { authenticateThenStart() }
-        }
         val stop = Button(this).apply {
             text = getString(R.string.btn_stop)
             setOnClickListener {
@@ -155,7 +149,6 @@ class MainActivity : AppCompatActivity() {
             LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(40, 80, 40, 40)
-                addView(startButton)
                 addView(stop)
                 addView(recordVideo)
                 addView(convertBtc)
@@ -173,6 +166,16 @@ class MainActivity : AppCompatActivity() {
             },
         )
         updateStatus()
+        // Auth-on-launch: opening the app IS the start gesture. If evolIA isn't
+        // already running, prompt for PIN + password (and biometric/setup if
+        // applicable) and start the service the moment auth succeeds. Cancelling
+        // any step closes the activity — there is no in-app "Start" fallback by
+        // design, so the user's only path to a running evolIA is sign-in on launch.
+        if (!isEvoliaRunning()) {
+            authenticate(allowSetup = true, onCancel = { finish() }) { password ->
+                onAuthenticated(password)
+            }
+        }
     }
 
     override fun onResume() {
@@ -188,8 +191,6 @@ class MainActivity : AppCompatActivity() {
     private fun updateStatus() {
         status.text = buildStatusText()
         status.movementMethod = LinkMovementMethod.getInstance()
-        val isRunning = isEvoliaRunning()
-        startButton.visibility = if (isRunning) View.GONE else View.VISIBLE
     }
 
     private fun isEvoliaRunning(): Boolean {
@@ -200,25 +201,27 @@ class MainActivity : AppCompatActivity() {
 
     // --- auth gate -----------------------------------------------------------
 
-    private fun authenticateThenStart() = authenticate(allowSetup = true) { password -> onAuthenticated(password) }
-
     /**
      * Owner auth gate (PIN -> password -> optional biometric) — the Android port
      * of evolia-start's three layers, reused for every owner action. Yields the
      * verified password to [onOk]. When auth isn't configured yet, [allowSetup]
-     * decides whether to run first-time setup (the Start flow) or refuse (an action
-     * that presupposes an existing owner, e.g. an on-chain transfer).
+     * decides whether to run first-time setup (the launch flow) or refuse (an action
+     * that presupposes an existing owner, e.g. an on-chain transfer). [onCancel]
+     * fires if the user dismisses any auth dialog — the launch flow uses it to
+     * finish() the activity (auth is mandatory), per-action callers default to a
+     * silent no-op (the dashboard stays put).
      */
-    private fun authenticate(allowSetup: Boolean, onOk: (String) -> Unit) {
+    private fun authenticate(allowSetup: Boolean, onCancel: () -> Unit = {}, onOk: (String) -> Unit) {
         val store = AuthStore(EvoliaPaths(File(filesDir, "evolia")))
         if (!store.isConfigured()) {
-            if (allowSetup) promptSetup(store) { password -> onOk(password) } else toast(getString(R.string.msg_auth_needed))
+            if (allowSetup) promptSetup(store, onCancel) { password -> onOk(password) }
+            else toast(getString(R.string.msg_auth_needed))
             return
         }
-        promptPin(store) {
-            promptPassword(store) { password ->
+        promptPin(store, onCancel = onCancel) {
+            promptPassword(store, onCancel = onCancel) { password ->
                 val cfg = store.load()
-                if (cfg?.biometricEnabled == true) promptBiometric { onOk(password) } else onOk(password)
+                if (cfg?.biometricEnabled == true) promptBiometric(onCancel) { onOk(password) } else onOk(password)
             }
         }
     }
@@ -247,16 +250,16 @@ class MainActivity : AppCompatActivity() {
         startWithPermissions.launch(neededPermissions())
     }
 
-    private fun promptSetup(store: AuthStore, onDone: (String) -> Unit) {
-        promptSecret(getString(R.string.setup_pin), numeric = true) { pin ->
+    private fun promptSetup(store: AuthStore, onCancel: () -> Unit, onDone: (String) -> Unit) {
+        promptSecret(getString(R.string.setup_pin), numeric = true, onCancel = onCancel) { pin ->
             if (!AuthStore.isValidPin(pin)) {
                 toast(getString(R.string.msg_pin_invalid))
             } else {
-                promptSecret(getString(R.string.setup_password), numeric = false) { pw ->
+                promptSecret(getString(R.string.setup_password), numeric = false, onCancel = onCancel) { pw ->
                     if (!AuthStore.isValidPassword(pw)) {
                         toast(getString(R.string.msg_password_invalid))
                     } else {
-                        confirm(getString(R.string.setup_biometric)) { bio ->
+                        confirm(getString(R.string.setup_biometric), onCancel = onCancel) { bio ->
                             store.setup(pin, pw, bio)
                             toast(getString(R.string.msg_auth_configured))
                             onDone(pw)
@@ -267,33 +270,33 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun promptPin(store: AuthStore, attempts: Int = MAX_ATTEMPTS, onOk: () -> Unit) {
-        promptSecret(getString(R.string.auth_pin), numeric = true) { pin ->
+    private fun promptPin(store: AuthStore, attempts: Int = MAX_ATTEMPTS, onCancel: () -> Unit = {}, onOk: () -> Unit) {
+        promptSecret(getString(R.string.auth_pin), numeric = true, onCancel = onCancel) { pin ->
             when {
                 store.verifyPin(pin) -> onOk()
                 attempts > 1 -> {
                     toast(getString(R.string.msg_pin_incorrect).format(attempts - 1))
-                    promptPin(store, attempts - 1, onOk)
+                    promptPin(store, attempts - 1, onCancel, onOk)
                 }
                 else -> toast(getString(R.string.msg_auth_failed))
             }
         }
     }
 
-    private fun promptPassword(store: AuthStore, attempts: Int = MAX_ATTEMPTS, onOk: (String) -> Unit) {
-        promptSecret(getString(R.string.auth_password), numeric = false) { pw ->
+    private fun promptPassword(store: AuthStore, attempts: Int = MAX_ATTEMPTS, onCancel: () -> Unit = {}, onOk: (String) -> Unit) {
+        promptSecret(getString(R.string.auth_password), numeric = false, onCancel = onCancel) { pw ->
             when {
                 store.verifyPassword(pw) -> onOk(pw)
                 attempts > 1 -> {
                     toast(getString(R.string.msg_password_incorrect).format(attempts - 1))
-                    promptPassword(store, attempts - 1, onOk)
+                    promptPassword(store, attempts - 1, onCancel, onOk)
                 }
                 else -> toast(getString(R.string.msg_auth_failed))
             }
         }
     }
 
-    private fun promptBiometric(onSuccess: () -> Unit) {
+    private fun promptBiometric(onCancel: () -> Unit = {}, onSuccess: () -> Unit) {
         val canAuth = BiometricManager.from(this)
             .canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK)
         if (canAuth != BiometricManager.BIOMETRIC_SUCCESS) {
@@ -311,6 +314,9 @@ class MainActivity : AppCompatActivity() {
 
                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
                     toast("Biométrie: $errString")
+                    // Treat any biometric error (negative-button tap, lockout,
+                    // user cancel) as a cancel so the launch flow can finish().
+                    onCancel()
                 }
             },
         )
@@ -323,7 +329,7 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    private fun promptSecret(title: String, numeric: Boolean, onOk: (String) -> Unit) {
+    private fun promptSecret(title: String, numeric: Boolean, onCancel: () -> Unit = {}, onOk: (String) -> Unit) {
         val input = EditText(this).apply {
             inputType = if (numeric) {
                 InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
@@ -336,11 +342,14 @@ class MainActivity : AppCompatActivity() {
             .setView(input)
             .setCancelable(false)
             .setPositiveButton(getString(R.string.auth_ok)) { _, _ -> onOk(input.text.toString()) }
-            .setNegativeButton(getString(R.string.auth_cancel), null)
+            .setNegativeButton(getString(R.string.auth_cancel)) { _, _ -> onCancel() }
             .show()
     }
 
-    private fun confirm(message: String, onChoice: (Boolean) -> Unit) {
+    private fun confirm(message: String, @Suppress("UNUSED_PARAMETER") onCancel: () -> Unit = {}, onChoice: (Boolean) -> Unit) {
+        // The biometric-enrolment confirm has two valid completions (Yes/No, both
+        // proceed setup); onCancel is accepted for signature symmetry with the
+        // other prompt helpers but is never invoked.
         AlertDialog.Builder(this)
             .setMessage(message)
             .setCancelable(false)
