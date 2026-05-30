@@ -52,4 +52,17 @@ class ChatStoreTest {
         val (s, _) = store()
         assertTrue(s.drainOutbox().isEmpty())
     }
+
+    @Test
+    fun addThenRemoveContactRoundtrip() {
+        val (s, _) = store()
+        s.addContact("Alice", "aa")
+        s.addContact("Bob", "bb")
+        assertEquals(listOf("Alice", "Bob"), s.contacts().map { it.name })
+        s.removeContact("aa")
+        assertEquals(listOf("Bob"), s.contacts().map { it.name })
+        // Removing an unknown bundle is a no-op (no crash, no spurious entries).
+        s.removeContact("ff")
+        assertEquals(listOf("Bob"), s.contacts().map { it.name })
+    }
 }

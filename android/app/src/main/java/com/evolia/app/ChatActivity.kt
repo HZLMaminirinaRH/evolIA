@@ -79,6 +79,10 @@ class ChatActivity : AppCompatActivity() {
             text = getString(R.string.chat_add_contact)
             setOnClickListener { promptAddContact() }
         }
+        val removeContact = Button(this).apply {
+            text = getString(R.string.chat_remove_contact)
+            setOnClickListener { promptRemoveContact() }
+        }
         contactSpinner = Spinner(this)
         refreshContacts()
 
@@ -107,6 +111,7 @@ class ChatActivity : AppCompatActivity() {
                 addView(myId)
                 addView(shareId)
                 addView(addContact)
+                addView(removeContact)
                 addView(contactSpinner)
                 addView(
                     scroll,
@@ -213,28 +218,51 @@ class ChatActivity : AppCompatActivity() {
             .setPositiveButton(getString(R.string.auth_ok)) { _, _ ->
                 val n = name.text.toString().trim()
                 val b = bundle.text.toString().trim()
-                if (n.isNotEmpty() && b.isNotEmpty()) {
-                    store.addContact(n, b)
-                    refreshContacts()
-                    toast(getString(R.string.chat_contact_added))
+                when {
+                    n.isEmpty() || b.isEmpty() -> toast(getString(R.string.chat_contact_invalid))
+                    // Reject a malformed bundle at add time (rather than at the
+                    // first send attempt) so the user gets the error immediately.
+                    !manager.isValidBundle(b) -> toast(getString(R.string.chat_contact_invalid_bundle))
+                    else -> {
+                        store.addContact(n, b)
+                        refreshContacts()
+                        toast(getString(R.string.chat_contact_added))
+                    }
                 }
             }
             .setNegativeButton(getString(R.string.auth_cancel), null)
             .show()
     }
 
-    private fun promptEnableRadiosIfNeeded() {
-        val btOff = !isBluetoothOn()
-        val wifiOff = !isWifiOn()
-        if (!btOff && !wifiOff) return
-        val msg = when {
-            btOff && wifiOff -> R.string.chat_enable_both
-            btOff -> R.string.chat_enable_bluetooth
-            else -> R.string.chat_enable_wifi
+    private fun promptRemoveContact() {
+        val contact = selectedContact()
+        if (contact == null) {
+            toast(getString(R.string.chat_no_contact))
+            return
         }
         AlertDialog.Builder(this)
+            .setTitle(getString(R.string.chat_remove_contact))
+            .setMessage(getString(R.string.chat_remove_contact_confirm).format(sanitizeForDisplay(contact.name)))
+            .setPositiveButton(getString(R.string.auth_yes)) { _, _ ->
+                manager.removeContact(contact.bundleHex)
+                refreshContacts()
+                toast(getString(R.string.chat_contact_removed))
+            }
+            .setNegativeButton(getString(R.string.auth_no), null)
+            .show()
+    }
+
+    private fun promptEnableRadiosIfNeeded() {
+        // Only nag if BOTH transports are off — once either radio is on, peer
+        // messaging can flow (BT alone is the offline mesh; Wi-Fi alone is the
+        // LAN/UDP relay). Earlier we re-asked for Wi-Fi even when BT was already
+        // up and a peer link was established; this stops that.
+        val btOff = !isBluetoothOn()
+        val wifiOff = !isWifiOn()
+        if (!btOff || !wifiOff) return
+        AlertDialog.Builder(this)
             .setTitle(R.string.chat_radios_title)
-            .setMessage(msg)
+            .setMessage(R.string.chat_enable_both)
             .setPositiveButton(R.string.chat_open_bluetooth_settings) { _, _ ->
                 openSettings(Settings.ACTION_BLUETOOTH_SETTINGS)
             }

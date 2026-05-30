@@ -42,9 +42,14 @@
     <string name="chat_my_identity">Ny maha-izaho: %s</string>
     <string name="chat_copy_identity">Adikao ny maha-izaho</string>
     <string name="chat_add_contact">Manampy namana</string>
+    <string name="chat_remove_contact">Esory namana</string>
+    <string name="chat_remove_contact_confirm">Esorina amin\'ny namanao i %s ?</string>
+    <string name="chat_contact_removed">Voafafa ny namana.</string>
     <string name="chat_contact_name">Anaran\'ny namana</string>
     <string name="chat_contact_bundle">Lakile ampahibemaso (bundle)</string>
     <string name="chat_contact_added">Namana voampanampy.</string>
+    <string name="chat_contact_invalid">Tsy maintsy ampidirina ny anarana sy ny bundle.</string>
+    <string name="chat_contact_invalid_bundle">Bundle diso — apetaho ny lakile ampahibemaso marina (128 litera) nozarain\'ny namanao.</string>
     <string name="chat_message_hint">Hafatra…</string>
     <string name="chat_send">Alefaso</string>
     <string name="chat_no_contact">Mifidiana namana aloha.</string>

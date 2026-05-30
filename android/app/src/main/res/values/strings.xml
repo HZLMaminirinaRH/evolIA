@@ -42,9 +42,14 @@
     <string name="chat_my_identity">My identity: %s</string>
     <string name="chat_copy_identity">Copy my identity</string>
     <string name="chat_add_contact">Add a contact</string>
+    <string name="chat_remove_contact">Remove contact</string>
+    <string name="chat_remove_contact_confirm">Remove %s from your contacts?</string>
+    <string name="chat_contact_removed">Contact removed.</string>
     <string name="chat_contact_name">Contact name</string>
     <string name="chat_contact_bundle">Public key (bundle)</string>
     <string name="chat_contact_added">Contact added.</string>
+    <string name="chat_contact_invalid">Name and bundle are both required.</string>
+    <string name="chat_contact_invalid_bundle">Invalid bundle — paste the exact 128-character public key shared by your peer.</string>
     <string name="chat_message_hint">Message…</string>
     <string name="chat_send">Send</string>
     <string name="chat_no_contact">Pick a contact first.</string>

@@ -42,9 +42,14 @@
     <string name="chat_my_identity">Mon identité : %s</string>
     <string name="chat_copy_identity">Copier mon identité</string>
     <string name="chat_add_contact">Ajouter un contact</string>
+    <string name="chat_remove_contact">Supprimer un contact</string>
+    <string name="chat_remove_contact_confirm">Supprimer %s de vos contacts ?</string>
+    <string name="chat_contact_removed">Contact supprimé.</string>
     <string name="chat_contact_name">Nom du contact</string>
     <string name="chat_contact_bundle">Clé publique (bundle)</string>
     <string name="chat_contact_added">Contact ajouté.</string>
+    <string name="chat_contact_invalid">Le nom et le bundle sont obligatoires.</string>
+    <string name="chat_contact_invalid_bundle">Bundle invalide — collez la clé publique exacte (128 caractères) partagée par votre pair.</string>
     <string name="chat_message_hint">Message…</string>
     <string name="chat_send">Envoyer</string>
     <string name="chat_no_contact">Choisis d\'abord un contact.</string>

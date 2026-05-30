@@ -131,4 +131,13 @@ class ChatStore(private val paths: EvoliaPaths) {
         merged.forEach { arr.put(JSONObject().put("name", it.name).put("bundle", it.bundleHex)) }
         paths.chatContacts.writeText(arr.toString())
     }
+
+    /** Remove a contact by bundle, persisting the trimmed list. No-op if absent. */
+    fun removeContact(bundleHex: String) {
+        paths.home.mkdirs()
+        val filtered = contacts().filter { it.bundleHex != bundleHex }
+        val arr = JSONArray()
+        filtered.forEach { arr.put(JSONObject().put("name", it.name).put("bundle", it.bundleHex)) }
+        paths.chatContacts.writeText(arr.toString())
+    }
 }

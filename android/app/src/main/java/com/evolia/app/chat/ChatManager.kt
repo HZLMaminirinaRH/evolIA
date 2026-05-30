@@ -30,26 +30,40 @@ class ChatManager(
 
     /** Seal [text] for the holder of [recipientBundleHex] and queue it for relay.
      *  Returns false if the bundle is invalid or the text is empty / over the
-     *  mini-message length cap (MAX_MESSAGE_CHARS). */
+     *  mini-message length cap (MAX_MESSAGE_CHARS). Any unexpected crypto error is
+     *  swallowed (returns false) so an upstream bad-bundle never crashes the UI. */
     fun send(recipientBundleHex: String, text: String): Boolean {
         if (text.isEmpty() || text.length > MAX_MESSAGE_CHARS) return false
         val to = ChatIdentity.fingerprintFromBundle(recipientBundleHex) ?: return false
-        val body = identity.seal(recipientBundleHex, text.toByteArray())
-        store.enqueue(
-            ChatStore.Wire(
-                id = UUID.randomUUID().toString(),
-                to = to,
-                from = myFingerprint,
-                ts = Instant.now().toString(),
-                body = body,
-            ),
-        )
-        // Composing a message is a valued digital action (like sending a text),
-        // counted on the sender's own device — so chat engagement contributes to
-        // V -> BTC-e just like screen/photo/video activity.
-        onMessageSent()
-        return true
+        return try {
+            val body = identity.seal(recipientBundleHex, text.toByteArray())
+            store.enqueue(
+                ChatStore.Wire(
+                    id = UUID.randomUUID().toString(),
+                    to = to,
+                    from = myFingerprint,
+                    ts = Instant.now().toString(),
+                    body = body,
+                ),
+            )
+            // Composing a message is a valued digital action (like sending a text),
+            // counted on the sender's own device — so chat engagement contributes to
+            // V -> BTC-e just like screen/photo/video activity.
+            onMessageSent()
+            true
+        } catch (_: Exception) {
+            false
+        }
     }
+
+    /** Returns true if [bundleHex] looks like a valid public bundle (128 hex chars,
+     *  parses into a valid Ed25519/X25519 pair). Used by the UI to validate input
+     *  at contact-add time so the user gets immediate feedback. */
+    fun isValidBundle(bundleHex: String): Boolean =
+        ChatIdentity.fingerprintFromBundle(bundleHex) != null
+
+    /** Remove a previously-added contact (no-op if absent). */
+    fun removeContact(bundleHex: String) = store.removeContact(bundleHex)
 
     data class Received(val senderFingerprint: String, val senderBundleHex: String, val text: String)
 
