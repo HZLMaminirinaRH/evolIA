@@ -3,6 +3,7 @@ package com.evolia.app.chain
 import android.content.Context
 import com.evolia.app.core.EvoliaAnchor
 import com.evolia.app.core.EvoliaPaths
+import com.evolia.app.ui.TransferNotify
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import org.json.JSONObject
 import org.web3j.abi.FunctionEncoder
@@ -124,6 +125,11 @@ class ChainAnchor(context: Context, private val paths: EvoliaPaths) {
         try {
             ensureSecurityProvider()
             val centi = queryBalance(web3, contractAddress, wallet.address) ?: return
+            // Compare with the previous cached value so an INCREASE since the last
+            // poll is surfaced as a receiver "accusé de réception" — an on-chain
+            // transfer landed in our account. Decreases (we just sent) are silent
+            // here; the sender side posts its own "accusé d'envoi" via doTransfer.
+            val prevCenti = readCachedBalanceCenti()
             paths.home.mkdirs()
             paths.onchainBalance.writeText(
                 JSONObject()
@@ -132,10 +138,26 @@ class ChainAnchor(context: Context, private val paths: EvoliaPaths) {
                     .put("timestamp", Instant.now().toString())
                     .toString(),
             )
+            if (prevCenti != null && centi.toLong() > prevCenti) {
+                val deltaBtce = (centi.toLong() - prevCenti) / 100.0
+                TransferNotify.notifyReceived(app, deltaBtce, "on-chain", settled = true)
+            }
         } catch (_: Exception) {
             // Best-effort cache — a transient failure just keeps the last value.
         } finally {
             web3.shutdown()
+        }
+    }
+
+    /** Read the previously-cached centi-balance, or null if no prior cache. Used
+     *  to detect an INCREASE between refresh ticks (= incoming transfer). */
+    private fun readCachedBalanceCenti(): Long? {
+        val f = paths.onchainBalance
+        if (!f.exists()) return null
+        return try {
+            JSONObject(f.readText()).optLong("balance_centi", -1L).takeIf { it >= 0 }
+        } catch (_: Exception) {
+            null
         }
     }
 

@@ -68,20 +68,81 @@ class ChatManager(
 
     data class Received(val messageId: String, val senderFingerprint: String, val senderBundleHex: String, val text: String)
 
-    /** Decrypt every inbound envelope we can open; undecryptable/forged lines are
-     *  silently skipped (open() returns null on a bad signature or wrong key).
+    /** A decrypted offline transfer promise received from a peer. The amount is
+     *  sealed E2E (the relay never sees it); this is an at-risk peer promise, not a
+     *  settled on-chain transfer — the receiver is notified, nothing is minted. */
+    data class ReceivedTransfer(val messageId: String, val senderFingerprint: String, val amountBtce: Double)
+
+    /** Decrypt every inbound chat envelope we can open; undecryptable/forged lines
+     *  are silently skipped (open() returns null on a bad signature or wrong key).
      *  Deduped by id so a message delivered over two transports (UDP + Bluetooth)
-     *  shows once. Filters out ACK envelopes (type=="ack") — those are handled
-     *  separately by readAcks(). */
+     *  shows once. Filters out ACK (type=="ack") and transfer (type=="xfer")
+     *  envelopes — those are handled by readAcks()/incomingTransfers(). */
     fun inbox(): List<Received> {
         val seen = HashSet<String>()
         return store.readInbox().mapNotNull { wire ->
-            // Skip ACK envelopes (they are handled by readAcks, not displayed as messages)
-            if (wire.type == "ack") return@mapNotNull null
+            // Only plain chat messages here; acks and transfers route elsewhere.
+            if (wire.type != "msg") return@mapNotNull null
             if (!seen.add(wire.id)) return@mapNotNull null
             identity.open(wire.body)?.let {
                 Received(wire.id, it.senderFingerprint, it.senderBundleHex, String(it.plaintext))
             }
+        }
+    }
+
+    /**
+     * Seal an OFFLINE BTC-e transfer promise of [amountBtce] for the holder of
+     * [recipientBundleHex] and queue it on the dual-transport mesh (UDP +
+     * Bluetooth), so it reaches the peer even with no internet. Returns the
+     * envelope id, or null on a bad bundle / non-positive amount. This is an
+     * at-risk peer promise (not on-chain settlement): nothing is minted; the
+     * receiver simply gets an "accusé de réception" when it arrives.
+     */
+    fun sendTransfer(recipientBundleHex: String, amountBtce: Double): String? {
+        if (amountBtce <= 0.0) return null
+        val to = ChatIdentity.fingerprintFromBundle(recipientBundleHex) ?: return null
+        return try {
+            val msgId = "xfer_" + UUID.randomUUID().toString()
+            val payload = org.json.JSONObject().put("btce", amountBtce).toString()
+            val body = identity.seal(recipientBundleHex, payload.toByteArray())
+            store.enqueue(
+                ChatStore.Wire(
+                    id = msgId,
+                    to = to,
+                    from = myFingerprint,
+                    ts = Instant.now().toString(),
+                    body = body,
+                    type = "xfer",
+                ),
+            )
+            msgId
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /** Decrypt a single transfer-promise envelope (type=="xfer"). Returns null for
+     *  a non-xfer, undecryptable/forged, or non-positive-amount envelope. Used by
+     *  the receiver's notifier to classify and surface an arrival inline. */
+    fun openTransfer(wire: ChatStore.Wire): ReceivedTransfer? {
+        if (wire.type != "xfer") return null
+        val opened = identity.open(wire.body) ?: return null
+        val amount = try {
+            org.json.JSONObject(String(opened.plaintext)).optDouble("btce", -1.0)
+        } catch (_: Exception) {
+            -1.0
+        }
+        if (amount <= 0.0) return null
+        return ReceivedTransfer(wire.id, opened.senderFingerprint, amount)
+    }
+
+    /** Decrypt every inbound transfer-promise envelope (type=="xfer") we can open.
+     *  Deduped by id; undecryptable/forged lines are skipped. */
+    fun incomingTransfers(): List<ReceivedTransfer> {
+        val seen = HashSet<String>()
+        return store.readInbox().mapNotNull { wire ->
+            if (!seen.add(wire.id)) return@mapNotNull null
+            openTransfer(wire)
         }
     }
 

@@ -92,6 +92,14 @@
     <string name="transfer_local_record">Record local P2P transfer</string>
     <string name="msg_transfer_local_recorded">Recorded local promise: %1$.2f BTC-e to %2$s. The mesh can verify claims if shared.</string>
     <string name="msg_transfer_local_failed">Failed to record: %1$s</string>
+    <string name="transfer_local_no_contact">Add a chat contact first — an offline transfer is carried over the encrypted mesh to a known peer.</string>
+    <string name="transfer_channel_name">BTC-e transfers</string>
+    <string name="transfer_notif_sent_title">BTC-e sent (acknowledgment)</string>
+    <string name="transfer_notif_sent_onchain">On-chain: %1$.2f BTC-e sent to %2$s</string>
+    <string name="transfer_notif_sent_offline">Offline (peer promise): %1$.2f BTC-e sent to %2$s</string>
+    <string name="transfer_notif_recv_title">BTC-e received (acknowledgment)</string>
+    <string name="transfer_notif_recv_onchain">On-chain: +%1$.2f BTC-e from %2$s</string>
+    <string name="transfer_notif_recv_offline">Offline (peer promise): +%1$.2f BTC-e from %2$s</string>
     <string name="receive_preparing">Preparing your address…</string>
     <string name="receive_unavailable">Address unavailable (on-chain crypto failed).</string>
     <string name="receive_title">Receive BTC-e</string>

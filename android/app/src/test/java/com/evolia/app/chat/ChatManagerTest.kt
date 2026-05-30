@@ -176,6 +176,35 @@ class ChatManagerTest {
     }
 
     @Test
+    fun offlineTransferRoundtrip() {
+        // An offline BTC-e transfer rides the same sealed envelope as a chat
+        // message but carries type="xfer" + a sealed JSON {"btce": N} body, so the
+        // relay never sees the amount and the receiver gets a verifiable promise.
+        val (alice, pathsA) = manager()
+        val (bob, pathsB) = manager()
+
+        val id = alice.sendTransfer(bob.myBundleHex, 4.75)
+        assertNotNull("sendTransfer returns an envelope id", id)
+        relay(pathsA, pathsB)
+
+        val incoming = bob.incomingTransfers()
+        assertEquals(1, incoming.size)
+        assertEquals(4.75, incoming[0].amountBtce, 1e-9)
+        assertEquals(alice.myFingerprint, incoming[0].senderFingerprint)
+        // A transfer envelope must NOT appear as a plain chat message.
+        assertTrue("xfer is filtered from chat inbox", bob.inbox().isEmpty())
+    }
+
+    @Test
+    fun sendTransferRejectsBadInputs() {
+        val (alice, _) = manager()
+        val (bob, _) = manager()
+        assertTrue("non-positive amount is rejected", alice.sendTransfer(bob.myBundleHex, 0.0) == null)
+        assertTrue("negative amount is rejected", alice.sendTransfer(bob.myBundleHex, -1.0) == null)
+        assertTrue("invalid bundle is rejected", alice.sendTransfer("not-a-bundle", 1.0) == null)
+    }
+
+    @Test
     fun acksAreFilteredFromInbox() {
         val (alice, pathsA) = manager()
         val (bob, pathsB) = manager()

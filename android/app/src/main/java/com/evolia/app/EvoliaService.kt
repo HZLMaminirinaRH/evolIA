@@ -15,6 +15,7 @@ import androidx.core.app.NotificationManagerCompat
 import com.evolia.app.chain.ChainAnchor
 import com.evolia.app.chat.BluetoothMeshTransport
 import com.evolia.app.chat.ChatIdentityStore
+import com.evolia.app.chat.ChatManager
 import com.evolia.app.chat.ChatStore
 import com.evolia.app.core.ActionQueue
 import com.evolia.app.core.EvoliaPaths
@@ -22,6 +23,7 @@ import com.evolia.app.core.EvoliaValue
 import com.evolia.app.security.AdaptiveDefense
 import com.evolia.app.sensors.AndroidSensors
 import com.evolia.app.sensors.MediaActionCapture
+import com.evolia.app.ui.TransferNotify
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import org.json.JSONObject
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -212,6 +214,9 @@ class EvoliaService : Service() {
     private fun startChatNotifier(home: File) = scope.launch {
         val paths = EvoliaPaths(home)
         val store = ChatStore(paths)
+        // A ChatManager so the notifier can open an incoming OFFLINE transfer
+        // envelope (its amount is sealed E2E) and surface a received receipt.
+        val manager = ChatManager(ChatIdentityStore(paths).loadOrCreate(), store)
         // Pre-seed with any envelopes already on disk so the user isn't spammed
         // for messages they have already seen in an earlier session.
         val seen = store.inboxIds().toMutableSet()
@@ -220,7 +225,19 @@ class EvoliaService : Service() {
             try {
                 val newFrom = mutableListOf<String>()
                 for (wire in store.readInbox()) {
-                    if (seen.add(wire.id)) newFrom.add(wire.from.take(8))
+                    if (!seen.add(wire.id)) continue
+                    when (wire.type) {
+                        // A plain chat message: nudge the user to open the chat.
+                        "msg" -> newFrom.add(wire.from.take(8))
+                        // An offline BTC-e transfer promise: decrypt the sealed
+                        // amount and post the receiver's "accusé de réception".
+                        "xfer" -> manager.openTransfer(wire)?.let { x ->
+                            TransferNotify.notifyReceived(
+                                this@EvoliaService, x.amountBtce, x.senderFingerprint.take(8), settled = false,
+                            )
+                        }
+                        // "ack" (delivery receipt) is handled in the chat UI, not here.
+                    }
                 }
                 if (newFrom.isNotEmpty()) postChatNotification(newFrom)
             } catch (_: Exception) {

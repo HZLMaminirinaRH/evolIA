@@ -30,14 +30,20 @@ import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import com.evolia.app.chain.ChainAnchor
+import com.evolia.app.chat.ChatIdentity
+import com.evolia.app.chat.ChatIdentityStore
+import com.evolia.app.chat.ChatManager
+import com.evolia.app.chat.ChatStore
 import com.evolia.app.core.ActionQueue
 import com.evolia.app.core.BitcoinBridge
 import com.evolia.app.core.Dashboard
 import com.evolia.app.core.EvoliaPaths
 import com.evolia.app.security.AuthStore
 import com.evolia.app.security.Security
+import com.evolia.app.ui.TransferNotify
 import com.evolia.app.ui.copyToClipboard
 import com.evolia.app.ui.copyrightFooter
+import com.evolia.app.ui.sanitizeForDisplay
 import org.json.JSONObject
 import java.io.File
 
@@ -498,10 +504,21 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun promptLocalTransferDetails() {
-        val toInput = EditText(this).apply {
-            hint = getString(R.string.transfer_to_hint)
-            inputType = InputType.TYPE_CLASS_TEXT
+        // An OFFLINE promise must travel to the peer over the sealed Bluetooth/UDP
+        // mesh, which is addressed by chat contact (not a raw 0x address) — so the
+        // recipient is picked from the chat contacts, and the amount is sealed E2E.
+        val paths = EvoliaPaths(File(filesDir, "evolia"))
+        val store = ChatStore(paths)
+        val contacts = store.contacts()
+        if (contacts.isEmpty()) {
+            toast(getString(R.string.transfer_local_no_contact))
+            return
         }
+        val labels = contacts.map { c ->
+            val fp = ChatIdentity.fingerprintFromBundle(c.bundleHex)?.take(8) ?: "?"
+            "${sanitizeForDisplay(c.name)}  ($fp…)"
+        }.toTypedArray()
+        var chosen = 0
         val amountInput = EditText(this).apply {
             hint = getString(R.string.transfer_amount_hint)
             inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
@@ -509,19 +526,18 @@ class MainActivity : AppCompatActivity() {
         val form = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(48, 24, 48, 0)
-            addView(toInput)
             addView(amountInput)
         }
         AlertDialog.Builder(this)
             .setTitle(getString(R.string.transfer_local_record))
+            .setSingleChoiceItems(labels, 0) { _, which -> chosen = which }
             .setView(form)
             .setPositiveButton(getString(R.string.auth_ok)) { _, _ ->
-                val to = toInput.text.toString().trim()
                 val amount = amountInput.text.toString().trim().toDoubleOrNull()
-                if (to.isEmpty() || amount == null || amount <= 0.0) {
+                if (amount == null || amount <= 0.0) {
                     toast(getString(R.string.transfer_invalid))
                 } else {
-                    doLocalTransfer(to, amount)
+                    doOfflineTransfer(contacts[chosen], amount)
                 }
             }
             .setNegativeButton(getString(R.string.auth_cancel), null)
@@ -536,6 +552,12 @@ class MainActivity : AppCompatActivity() {
             val result = ChainAnchor(this, paths).transfer(to, amountCenti)
             runOnUiThread {
                 toast(transferMessage(result))
+                // Sender-side "accusé d'envoi": notify only when the chain actually
+                // settled it (status success), so an unsettled local fallback never
+                // claims a sent receipt it didn't earn.
+                if (result.optString("status") == "success") {
+                    TransferNotify.notifySent(this, result.optDouble("amount_btce"), result.optString("to"), settled = true)
+                }
                 updateStatus()
             }
         }.start()
@@ -547,26 +569,37 @@ class MainActivity : AppCompatActivity() {
         else -> getString(R.string.msg_transfer_failed).format(result.optString("error", result.optString("note")))
     }
 
-    private fun doLocalTransfer(to: String, amountBtce: Double) {
+    private fun doOfflineTransfer(contact: ChatStore.Contact, amountBtce: Double) {
         val paths = EvoliaPaths(File(filesDir, "evolia"))
-        // A local (unsigned, non-on-chain) transfer is a peer-to-peer promise:
-        // documented locally, signed by owner auth (happened above), but with no
-        // blockchain settlement. At risk if the peer doesn't honor it, but faster
-        // and works offline. The mesh's adaptive defense will catch malicious
-        // double-spends and replay attempts if peers share these records.
+        // An offline transfer is a peer-to-peer promise: signed by owner auth (just
+        // happened), sealed end-to-end to the chosen contact, and carried to the
+        // peer over the same dual-transport mesh as chat (Bluetooth offline + UDP).
+        // It is NOT on-chain settlement — nothing is minted; the peer simply gets an
+        // "accusé de réception". The mesh's adaptive defense catches malicious
+        // replays if these promises are shared. The promise is also recorded locally
+        // (the existing at-risk ledger) so the sender keeps a trace.
         Thread {
             try {
+                val manager = ChatManager(ChatIdentityStore(paths).loadOrCreate(), ChatStore(paths))
+                val id = manager.sendTransfer(contact.bundleHex, amountBtce)
+                if (id == null) {
+                    runOnUiThread { toast(getString(R.string.msg_transfer_local_failed).format("seal failed")) }
+                    return@Thread
+                }
                 val entry = JSONObject()
                     .put("timestamp", System.currentTimeMillis())
-                    .put("to", to)
+                    .put("to", contact.name)
+                    .put("to_fingerprint", ChatIdentity.fingerprintFromBundle(contact.bundleHex) ?: "")
                     .put("amount_btce", amountBtce)
                     .put("status", "local_promise")
                     .put("mode", "offline")
+                    .put("envelope_id", id)
                 paths.home.mkdirs()
-                val file = File(paths.home, "evolia_local_transfers.jsonl")
-                file.appendText(entry.toString() + "\n")
+                File(paths.home, "evolia_local_transfers.jsonl").appendText(entry.toString() + "\n")
                 runOnUiThread {
-                    toast(getString(R.string.msg_transfer_local_recorded).format(amountBtce, to))
+                    toast(getString(R.string.msg_transfer_local_recorded).format(amountBtce, contact.name))
+                    // Sender-side "accusé d'envoi" for the offline promise.
+                    TransferNotify.notifySent(this, amountBtce, contact.name, settled = false)
                     updateStatus()
                 }
             } catch (e: Exception) {

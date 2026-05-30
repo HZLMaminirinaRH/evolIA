@@ -92,6 +92,14 @@
     <string name="transfer_local_record">Bokin\'ny fandefasana P2P an-toerana</string>
     <string name="msg_transfer_local_recorded">Amin\'ny mpiara-belona bokin\'ny ato : %1$.2f BTC-e ho an\'i %2$s. Ny maillé dia afaka manazantanteraka raha zarao.</string>
     <string name="msg_transfer_local_failed">Tsy nahomby ny bikin\'y : %1$s</string>
+    <string name="transfer_local_no_contact">Ampio aloha ny mpiara-belona ao amin\'ny chat — ny famindrana an-toerana dia entina amin\'ny mpiara-belona amin\'ny alalan\'ny maillé voasokitra.</string>
+    <string name="transfer_channel_name">Famindrana BTC-e</string>
+    <string name="transfer_notif_sent_title">BTC-e nalefa (vavolombelona)</string>
+    <string name="transfer_notif_sent_onchain">On-chain : %1$.2f BTC-e nalefa ho an\'i %2$s</string>
+    <string name="transfer_notif_sent_offline">An-toerana (fampanantenana eo amin\'ny mpiara-belona) : %1$.2f BTC-e nalefa ho an\'i %2$s</string>
+    <string name="transfer_notif_recv_title">BTC-e voaray (vavolombelona)</string>
+    <string name="transfer_notif_recv_onchain">On-chain : +%1$.2f BTC-e avy amin\'i %2$s</string>
+    <string name="transfer_notif_recv_offline">An-toerana (fampanantenana eo amin\'ny mpiara-belona) : +%1$.2f BTC-e avy amin\'i %2$s</string>
     <string name="receive_preparing">Manomana ny adiresinao…</string>
     <string name="receive_unavailable">Tsy hita ny adiresy (tsy nety ny crypto on-chain).</string>
     <string name="receive_title">Mandray BTC-e</string>
