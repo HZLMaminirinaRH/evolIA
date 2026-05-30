@@ -89,7 +89,7 @@ class ChainAnchor(context: Context, private val paths: EvoliaPaths) {
         if (amountCenti <= 0L) return logTransferLocal(toAddress, amountCenti, "amount must be positive")
         val cfg = readConfig() ?: return logTransferLocal(toAddress, amountCenti, "no RPC configured")
         val contractAddress = deployedAddress()
-            ?: return logTransferLocal(toAddress, amountCenti, "contract not deployed — start evolIA to anchor first")
+            ?: return logTransferLocal(toAddress, amountCenti, "contract not yet deployed — wait for the first value anchor cycle")
 
         val web3 = Web3j.build(HttpService(cfg.rpcUrl))
         try {

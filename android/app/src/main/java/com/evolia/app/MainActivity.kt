@@ -38,6 +38,7 @@ import com.evolia.app.core.ActionQueue
 import com.evolia.app.core.BitcoinBridge
 import com.evolia.app.core.Dashboard
 import com.evolia.app.core.EvoliaPaths
+import com.evolia.app.core.EvoliaValue
 import com.evolia.app.security.AuthStore
 import com.evolia.app.security.Security
 import com.evolia.app.ui.TransferNotify
@@ -618,6 +619,15 @@ class MainActivity : AppCompatActivity() {
                     runOnUiThread { toast(getString(R.string.msg_transfer_local_failed).format("seal failed")) }
                     return@Thread
                 }
+                // Deduct from local balance immediately (off-chain promise is risky but recorded).
+                val valueState = EvoliaValue.load(paths) ?: EvoliaValue(
+                    totalV = 0.0,
+                    cycleCount = 0,
+                    lastSyncUnix = System.currentTimeMillis() / 1000
+                )
+                valueState.totalV = (valueState.totalV - amountBtce).coerceAtLeast(0.0)
+                valueState.save(paths)
+
                 val entry = JSONObject()
                     .put("timestamp", System.currentTimeMillis())
                     .put("to", contact.name)

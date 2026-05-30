@@ -26,9 +26,12 @@ import com.evolia.app.chat.ChatManager
 import com.evolia.app.chat.ChatStore
 import com.evolia.app.core.ActionQueue
 import com.evolia.app.core.EvoliaPaths
+import com.evolia.app.core.EvoliaValue
+import com.evolia.app.ui.TransferNotify
 import com.evolia.app.ui.copyToClipboard
 import com.evolia.app.ui.copyrightFooter
 import com.evolia.app.ui.sanitizeForDisplay
+import org.json.JSONObject
 import java.io.File
 
 /**
@@ -268,6 +271,34 @@ class ChatActivity : AppCompatActivity() {
             // decrypts + marks it delivered. Idempotent: re-queueing a duplicate
             // ACK is harmless (relay dedups by id).
             manager.sendAck(received.senderFingerprint, received.messageId)
+        }
+        // Process incoming offline BTC-e transfers and credit the recipient's balance.
+        manager.incomingTransfers().forEach { xfer ->
+            try {
+                val paths = EvoliaPaths(File(filesDir, "evolia"))
+                // Add to local balance and record the received transfer.
+                val valueState = EvoliaValue.load(paths) ?: EvoliaValue(
+                    totalV = 0.0,
+                    cycleCount = 0,
+                    lastSyncUnix = System.currentTimeMillis() / 1000
+                )
+                valueState.totalV += xfer.amountBtce
+                valueState.save(paths)
+
+                val entry = JSONObject()
+                    .put("timestamp", System.currentTimeMillis())
+                    .put("from", xfer.senderFingerprint)
+                    .put("amount_btce", xfer.amountBtce)
+                    .put("status", "received")
+                    .put("mode", "offline")
+                    .put("envelope_id", xfer.messageId)
+                File(paths.home, "evolia_local_transfers.jsonl").appendText(entry.toString() + "\n")
+
+                // Notify receiver of BTC-e arrival.
+                TransferNotify.notifyReceived(this, xfer.amountBtce, xfer.senderFingerprint.take(8), settled = false)
+            } catch (_: Exception) {
+                // Silently skip on record failure; transfer is still in inbox for retry.
+            }
         }
         sent.forEach { msg ->
             sb.append(msg.display)
