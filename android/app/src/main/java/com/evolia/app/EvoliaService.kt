@@ -146,7 +146,7 @@ class EvoliaService : Service() {
         val store = ChatStore(paths)
         val identity = ChatIdentityStore(paths).loadOrCreate()
         val transport = BluetoothMeshTransport(
-            this@EvoliaService, store, AdaptiveDefense(), identity.fingerprint(),
+            this@EvoliaService, store, AdaptiveDefense(), identity.fingerprint(), paths,
         )
         bluetoothChat = transport
         transport.start(scope)

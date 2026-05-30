@@ -398,28 +398,47 @@ class ChatActivity : AppCompatActivity() {
             .show()
     }
 
-    /** Show a diagnostic snapshot of peer-to-peer reach: how many devices are
-     *  bonded over Bluetooth (the only ones BluetoothMeshTransport will try to
-     *  reach), whether Wi-Fi is on for the UDP relay, and how to fix gaps. The
-     *  most common failure mode reported by users is "radios on, message lost":
-     *  having Bluetooth ENABLED is not enough — both phones must be PAIRED at the
-     *  OS level (Settings -> Bluetooth -> Pair new device) so the adapter exposes
-     *  them as bonded devices. This dialog tells them what to do. */
+    /** Show a diagnostic snapshot of peer-to-peer reach: radio state, paired
+     *  device names (to spot a "paired a car, not the other phone" mistake),
+     *  permission state, and runtime counters (frames sent/received, connect
+     *  attempts/successes) so a user reporting "BT on, paired, no delivery" can
+     *  see exactly which arm is silent. */
     private fun showTransportDiagnostic() {
         val btOn = isBluetoothOn()
         val wifiOn = isWifiOn()
-        val bondedCount = try {
-            if (btOn && hasBluetoothConnectPermission()) {
+        val perm = hasBluetoothConnectPermission()
+        val bondedNames = try {
+            if (btOn && perm) {
                 (getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)
-                    ?.adapter?.bondedDevices?.size ?: 0
-            } else 0
+                    ?.adapter?.bondedDevices?.map { dev ->
+                        val name = try { dev.name ?: "?" } catch (_: SecurityException) { "?" }
+                        "  • $name (${dev.address})"
+                    }.orEmpty()
+            } else emptyList()
         } catch (_: SecurityException) {
-            0
+            emptyList()
         }
+        val bondedList = if (bondedNames.isEmpty()) {
+            "  (none)"
+        } else {
+            bondedNames.joinToString("\n")
+        }
+        val stats = readBtStats()
+        val paths = EvoliaPaths(File(filesDir, "evolia"))
+        val outboxPending = if (paths.chatOutbox.exists()) paths.chatOutbox.readLines().count { it.isNotBlank() } else 0
         val message = getString(R.string.chat_diag_message).format(
             if (btOn) getString(R.string.chat_diag_on) else getString(R.string.chat_diag_off),
-            bondedCount,
+            if (perm) getString(R.string.chat_diag_on) else getString(R.string.chat_diag_off),
+            bondedNames.size,
+            bondedList,
             if (wifiOn) getString(R.string.chat_diag_on) else getString(R.string.chat_diag_off),
+            stats.optLong("frames_sent"),
+            stats.optLong("connect_attempts"),
+            stats.optLong("connect_successes"),
+            stats.optLong("accept_count"),
+            stats.optLong("frames_received"),
+            stats.optLong("intake_rejections"),
+            outboxPending,
         )
         AlertDialog.Builder(this)
             .setTitle(R.string.chat_diag_title)
@@ -429,6 +448,16 @@ class ChatActivity : AppCompatActivity() {
             }
             .setNegativeButton(R.string.auth_ok, null)
             .show()
+    }
+
+    private fun readBtStats(): org.json.JSONObject {
+        val paths = EvoliaPaths(File(filesDir, "evolia"))
+        if (!paths.chatBtStats.exists()) return org.json.JSONObject()
+        return try {
+            org.json.JSONObject(paths.chatBtStats.readText())
+        } catch (_: Exception) {
+            org.json.JSONObject()
+        }
     }
 
     private fun hasBluetoothConnectPermission(): Boolean {

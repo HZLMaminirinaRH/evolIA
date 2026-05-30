@@ -27,6 +27,7 @@ class EvoliaPaths(val home: File) {
     val chatInbox: File get() = File(home, "evolia_chat_inbox.jsonl")
     val chatFingerprint: File get() = File(home, "evolia_chat_fingerprint.txt")
     val chatContacts: File get() = File(home, "evolia_chat_contacts.json")
+    val chatBtStats: File get() = File(home, "evolia_chat_bt_stats.json")
 
     companion object {
         const val CONVERSION_RATE_V_TO_SAT = 100_000

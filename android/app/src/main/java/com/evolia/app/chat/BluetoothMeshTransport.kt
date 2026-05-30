@@ -10,11 +10,13 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.content.ContextCompat
+import com.evolia.app.core.EvoliaPaths
 import com.evolia.app.security.AdaptiveDefense
 import com.evolia.app.security.AttackKind
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
@@ -50,6 +52,7 @@ class BluetoothMeshTransport(
     private val store: ChatStore,
     private val defense: AdaptiveDefense,
     private val myFingerprint: String,
+    private val paths: EvoliaPaths? = null,
 ) {
     private val adapter: BluetoothAdapter? =
         (context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
@@ -65,6 +68,18 @@ class BluetoothMeshTransport(
     // prevAttacks is touched only by the single relay tick.
     private val attacks = AtomicLong(0)
     private var prevAttacks = 0L
+
+    // Runtime counters surfaced to the in-app diagnostic so a user reporting
+    // "BT on, paired, no delivery" can see exactly which arm is silent: did the
+    // sender even try to connect? did any connection succeed? did the receiver's
+    // accept loop ever see a peer? Persisted to chatBtStats on each change so
+    // ChatActivity can read them without an IBinder hop.
+    private val framesSent = AtomicLong(0)
+    private val framesReceived = AtomicLong(0)
+    private val connectAttempts = AtomicLong(0)
+    private val connectSuccesses = AtomicLong(0)
+    private val acceptCount = AtomicLong(0)
+    private val intakeRejections = AtomicLong(0)
 
     @Volatile private var scope: CoroutineScope? = null
     @Volatile private var serverSocket: BluetoothServerSocket? = null
@@ -108,6 +123,8 @@ class BluetoothMeshTransport(
                     } catch (_: IOException) {
                         break // closed by stop(), or transient — fall out to re-listen
                     }
+                    acceptCount.incrementAndGet()
+                    persistStats()
                     scope?.launch(Dispatchers.IO) { handleConnection(socket) }
                 }
             } finally {
@@ -135,7 +152,12 @@ class BluetoothMeshTransport(
                     val result = synchronized(intakeLock) {
                         ChatIntake.accept(frame, myFingerprint, store, defense, seen)
                     }
-                    if (!result.accepted) attacks.incrementAndGet()
+                    framesReceived.incrementAndGet()
+                    if (!result.accepted) {
+                        attacks.incrementAndGet()
+                        intakeRejections.incrementAndGet()
+                    }
+                    persistStats()
                 }
             }
         } catch (_: IOException) {
@@ -178,6 +200,7 @@ class BluetoothMeshTransport(
 
     private fun sendFramesTo(device: BluetoothDevice, frames: List<ByteArray>): Boolean {
         var socket: BluetoothSocket? = null
+        connectAttempts.incrementAndGet()
         return try {
             // Discovery, if running, sharply slows or aborts an outgoing connect.
             try {
@@ -186,18 +209,57 @@ class BluetoothMeshTransport(
             }
             socket = device.createInsecureRfcommSocketToServiceRecord(APP_UUID)
             socket.connect()
+            connectSuccesses.incrementAndGet()
             val out = socket.outputStream
-            frames.forEach { BluetoothFraming.writeFrame(out, it) }
+            frames.forEach {
+                BluetoothFraming.writeFrame(out, it)
+                framesSent.incrementAndGet()
+            }
+            persistStats()
             true
         } catch (_: IOException) {
+            persistStats()
             false // peer out of range / not running evolIA — try the next device
         } catch (_: SecurityException) {
+            persistStats()
             false
         } finally {
             try {
                 socket?.close()
             } catch (_: IOException) {
             }
+        }
+    }
+
+    /** Snapshot of every paired Bluetooth device's name + address, so the
+     *  diagnostic dialog can show WHO is paired (often the user paired a car or
+     *  headset, not the other phone). Empty on no permission / no adapter. */
+    fun bondedDeviceNames(): List<String> {
+        if (!isAvailable()) return emptyList()
+        return try {
+            adapter?.bondedDevices?.map { dev ->
+                val name = try { dev.name ?: "?" } catch (_: SecurityException) { "?" }
+                "$name (${dev.address})"
+            }.orEmpty()
+        } catch (_: SecurityException) {
+            emptyList()
+        }
+    }
+
+    private fun persistStats() {
+        val p = paths ?: return
+        try {
+            val j = JSONObject()
+                .put("frames_sent", framesSent.get())
+                .put("frames_received", framesReceived.get())
+                .put("connect_attempts", connectAttempts.get())
+                .put("connect_successes", connectSuccesses.get())
+                .put("accept_count", acceptCount.get())
+                .put("intake_rejections", intakeRejections.get())
+            p.home.mkdirs()
+            p.chatBtStats.writeText(j.toString())
+        } catch (_: Exception) {
+            // Best-effort; a stats write failure must not break the relay.
         }
     }
 

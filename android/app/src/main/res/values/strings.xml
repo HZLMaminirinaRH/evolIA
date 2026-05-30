@@ -126,7 +126,7 @@
     <string name="chat_open_wifi_settings">Wi-Fi settings</string>
     <string name="chat_diag_button">Diagnose transport</string>
     <string name="chat_diag_title">Peer-to-peer reach</string>
-    <string name="chat_diag_message">Bluetooth: %1$s\nPaired peers: %2$d\nWi-Fi: %3$s\n\nFor Bluetooth delivery, the recipient phone must be PAIRED at the OS level (Settings → Bluetooth → Pair new device). With 0 paired peers, evolIA cannot send over Bluetooth — only the Wi-Fi LAN relay can reach the peer (both phones must be on the same Wi-Fi).</string>
+    <string name="chat_diag_message">RADIO\n• Bluetooth: %1$s\n• BT permission: %2$s\n• Wi-Fi: %5$s\n\nPAIRED DEVICES (%3$d):\n%4$s\n\nSEND COUNTERS (since service start)\n• Frames sent: %6$d\n• Connect attempts: %7$d\n• Connect successes: %8$d\n\nRECEIVE COUNTERS (since service start)\n• Accepted connections: %9$d\n• Frames received: %10$d\n• Intake rejections: %11$d\n\nOUTBOX: %12$d message(s) pending\n\nHOW TO READ THIS:\n• If \"Connect attempts\" stays at 0, no peer was tried (no bonded device, or radio off).\n• If \"attempts > 0\" but \"successes = 0\", the paired device is not running evolIA (or you paired a car/headset, not the other phone).\n• If \"successes > 0\" but the receiver shows \"Frames received = 0\", the connection drops before any frame goes through (range issue).\n• If receiver shows \"Frames received &gt; 0\" but message not displayed, check fingerprint match (sender\'s contact fingerprint must equal receiver\'s identity).</string>
     <string name="chat_diag_on">ON</string>
     <string name="chat_diag_off">OFF</string>
     <string name="chat_diag_pair_device">Pair a device</string>
