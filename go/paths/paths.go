@@ -86,6 +86,10 @@ func MeshSyncLog() string { return filepath.Join(Home(), "evolia_mesh_sync.log")
 func NetworkLog() string  { return filepath.Join(Home(), "evolia_network.log") }
 func BridgeLog() string   { return filepath.Join(Home(), "evolia_bridge.log") }
 
+// MeshStats is the UDP transport telemetry snapshot the Android diagnostic UI
+// reads — parallel to evolia_chat_bt_stats.json for the Bluetooth transport.
+func MeshStats() string { return filepath.Join(Home(), "evolia_mesh_stats.json") }
+
 // ChatOutbox is where the app queues outgoing end-to-end chat envelopes for the
 // relay to carry to peers; ChatInbox is where inbound envelopes addressed to
 // this node are appended for the app to read and decrypt. ChatFingerprint holds

@@ -37,6 +37,7 @@ import (
 	"evolia/defense"
 	"evolia/egress"
 	"evolia/mesh"
+	"evolia/meshstats"
 	"evolia/paths"
 	"evolia/peerhealth"
 	"evolia/pow"
@@ -79,6 +80,11 @@ func main() {
 	// instead of consuming cycle budget every tick. A single success re-warms
 	// it instantly. Send-side signal only — receive-side correlation is Phase 3.
 	health := peerhealth.NewTracker(time.Now)
+	// Telemetry recorder: monotonic counters (sends/receives/throttles/attacks
+	// by flow) persisted each cycle to evolia_mesh_stats.json so the Android
+	// diagnostic UI can read live transport health, parallel to the existing
+	// evolia_chat_bt_stats.json for Bluetooth.
+	stats := meshstats.NewRecorder()
 	cycle := cycleInterval()
 
 	logf := newLogger(paths.MeshSyncLog())
@@ -90,7 +96,7 @@ func main() {
 	var attacks, received, throttled, egressThrottled, coldSkipped atomic.Uint64
 
 	// Receive blocks propagated by peers and store them in the vault.
-	go listenBlocks(vault, seen, &mu, key, def, gate, &attacks, &received, &throttled, logf)
+	go listenBlocks(vault, seen, &mu, key, def, gate, &attacks, &received, &throttled, stats, logf)
 
 	// Relay opaque end-to-end chat alongside the value mesh: a UDP listener on
 	// chatAddr delivers inbound envelopes addressed to us into the app's inbox,
@@ -99,7 +105,7 @@ func main() {
 	// adaptive defense as block input. The seen set is preloaded so a restart
 	// does not re-deliver messages already in the inbox.
 	chatSeen := chat.LoadSeenIDs(paths.ChatInbox())
-	go listenChat(paths.ChatInbox(), chatSeen, paths.ChatFingerprint(), gate, def, &attacks, logf)
+	go listenChat(paths.ChatInbox(), chatSeen, paths.ChatFingerprint(), gate, def, &attacks, stats, logf)
 
 	prevAttacks := attacks.Load()
 	prevReceived := received.Load()
@@ -114,7 +120,7 @@ func main() {
 		// Emit this node's current value each cycle (signed, with its cognitive
 		// proof-of-work and params attached).
 		localV, localWork := readLocalBlock()
-		sendBlock(self, localV, localWork, params, peers, key, egressLimit, health, &egressThrottled, &coldSkipped, logf)
+		sendBlock(self, localV, localWork, params, peers, key, egressLimit, health, stats, &egressThrottled, &coldSkipped, logf)
 
 		// Relay any externally-dropped vault block once (received UDP blocks are
 		// marked seen, so they are never re-propagated — no amplification).
@@ -125,11 +131,18 @@ func main() {
 			logf("scan error: " + err.Error())
 		}
 		for _, b := range blocks {
-			sendBlock(b.Device, b.VValue, b.Work, params, peers, key, egressLimit, health, &egressThrottled, &coldSkipped, logf)
+			sendBlock(b.Device, b.VValue, b.Work, params, peers, key, egressLimit, health, stats, &egressThrottled, &coldSkipped, logf)
 		}
 
 		// Carry any queued chat envelopes to peers (opaque; never decrypted).
-		relayChat(paths.ChatOutbox(), peers, egressLimit, health, &egressThrottled, &coldSkipped, logf)
+		relayChat(paths.ChatOutbox(), peers, egressLimit, health, stats, &egressThrottled, &coldSkipped, logf)
+
+		// Persist the telemetry snapshot so the Android UI can read it. Best-
+		// effort — a write error is logged but never breaks the cycle (the next
+		// snapshot supersedes any half-failed one through the atomic rename).
+		if err := stats.PersistTo(paths.MeshStats(), health.ColdCount(), len(peers), def.Level()); err != nil {
+			logf("mesh stats persist error: " + err.Error())
+		}
 		time.Sleep(cycle)
 
 		// Couple the three live flows into the a_global net intensity, with the
@@ -171,7 +184,7 @@ func main() {
 // again (no amplification loops). The gate throttles intake per source under
 // defense pressure; a throttled datagram is dropped (not recorded as an attack,
 // so the throttle can never feed itself into a runaway).
-func listenBlocks(vault string, seen map[string]bool, mu *sync.Mutex, key []byte, def *defense.AdaptiveDefense, gate *defense.Gate, attacks, received, throttled *atomic.Uint64, logf func(string)) {
+func listenBlocks(vault string, seen map[string]bool, mu *sync.Mutex, key []byte, def *defense.AdaptiveDefense, gate *defense.Gate, attacks, received, throttled *atomic.Uint64, stats *meshstats.Recorder, logf func(string)) {
 	addr, err := net.ResolveUDPAddr("udp", blockAddr)
 	if err != nil {
 		logf("block listen resolve error: " + err.Error())
@@ -192,6 +205,7 @@ func listenBlocks(vault string, seen map[string]bool, mu *sync.Mutex, key []byte
 		}
 		if !gate.Allow(src.IP.String()) {
 			throttled.Add(1)
+			stats.IncDefenseThrottled()
 			continue
 		}
 		mu.Lock()
@@ -204,6 +218,7 @@ func listenBlocks(vault string, seen map[string]bool, mu *sync.Mutex, key []byte
 		switch {
 		case storeErr == nil:
 			received.Add(1)
+			stats.IncBlockReceived()
 			bridge.FuseIncoming(params)
 			logf("received " + name + " from " + src.IP.String())
 		case errors.Is(storeErr, mesh.ErrStale):
@@ -211,15 +226,19 @@ func listenBlocks(vault string, seen map[string]bool, mu *sync.Mutex, key []byte
 			// not an attack; drop it silently.
 		case errors.Is(storeErr, mesh.ErrInjection):
 			attacks.Add(1)
+			stats.IncBlockAttack("injection")
 			logf(fmt.Sprintf("injection from %s rejected (defense=%.2f)", src.IP.String(), def.Record(defense.SQLInjection)))
 		case errors.Is(storeErr, mesh.ErrForgedWork):
 			attacks.Add(1)
+			stats.IncBlockAttack("forged_work")
 			logf(fmt.Sprintf("forged work from %s rejected (defense=%.2f)", src.IP.String(), def.Record(defense.ForgedWork)))
 		case errors.Is(storeErr, mesh.ErrBadSignature):
 			attacks.Add(1)
+			stats.IncBlockAttack("bad_signature")
 			logf(fmt.Sprintf("bad signature from %s rejected (defense=%.2f)", src.IP.String(), def.Record(defense.BadSignature)))
 		default:
 			attacks.Add(1)
+			stats.IncBlockAttack("malformed")
 			logf(fmt.Sprintf("malformed from %s rejected (defense=%.2f)", src.IP.String(), def.Record(defense.Malformed)))
 		}
 	}
@@ -230,7 +249,7 @@ func listenBlocks(vault string, seen map[string]bool, mu *sync.Mutex, key []byte
 // adaptive defense. The gate throttles intake per source under pressure; a
 // throttled datagram is dropped (not scored, so the throttle can't feed itself).
 // The body is never decrypted here — end-to-end decryption is the app's job.
-func listenChat(inboxPath string, seen map[string]bool, fpPath string, gate *defense.Gate, def *defense.AdaptiveDefense, attacks *atomic.Uint64, logf func(string)) {
+func listenChat(inboxPath string, seen map[string]bool, fpPath string, gate *defense.Gate, def *defense.AdaptiveDefense, attacks *atomic.Uint64, stats *meshstats.Recorder, logf func(string)) {
 	addr, err := net.ResolveUDPAddr("udp", chatAddr)
 	if err != nil {
 		logf("chat listen resolve error: " + err.Error())
@@ -250,14 +269,17 @@ func listenChat(inboxPath string, seen map[string]bool, fpPath string, gate *def
 			continue
 		}
 		if !gate.Allow(src.IP.String()) {
+			stats.IncDefenseThrottled()
 			continue
 		}
 		m, perr := chat.ParseIncoming(buf[:n])
 		if perr != nil {
 			attacks.Add(1)
 			if errors.Is(perr, chat.ErrInjection) {
+				stats.IncChatAttack("injection")
 				logf(fmt.Sprintf("chat injection from %s rejected (defense=%.2f)", src.IP.String(), def.Record(defense.SQLInjection)))
 			} else {
+				stats.IncChatAttack("malformed")
 				logf(fmt.Sprintf("chat malformed from %s rejected (defense=%.2f)", src.IP.String(), def.Record(defense.Malformed)))
 			}
 			continue
@@ -268,6 +290,7 @@ func listenChat(inboxPath string, seen map[string]bool, fpPath string, gate *def
 		if stored, err := chat.AppendInbox(inboxPath, m, seen); err != nil {
 			logf("chat inbox write error: " + err.Error())
 		} else if stored {
+			stats.IncChatReceived()
 			logf("chat received id=" + m.ID + " from " + src.IP.String())
 		}
 	}
@@ -281,7 +304,7 @@ func listenChat(inboxPath string, seen map[string]bool, fpPath string, gate *def
 // across many peers cannot saturate the radio — Phase-2 fan-out reaches the
 // addressee via at least one un-throttled peer (the receiver dedups by id).
 // Cold peers (in a peer-health backoff window) are skipped without a dial.
-func relayChat(outboxPath string, peers []string, egressLimit *egress.Limiter, health *peerhealth.Tracker, egressThrottled, coldSkipped *atomic.Uint64, logf func(string)) {
+func relayChat(outboxPath string, peers []string, egressLimit *egress.Limiter, health *peerhealth.Tracker, stats *meshstats.Recorder, egressThrottled, coldSkipped *atomic.Uint64, logf func(string)) {
 	if len(peers) == 0 {
 		return
 	}
@@ -293,7 +316,7 @@ func relayChat(outboxPath string, peers []string, egressLimit *egress.Limiter, h
 	for _, m := range msgs {
 		data := m.Wire()
 		for _, peer := range peers {
-			sendChat(chatPeerAddr(peer), data, egressLimit, health, egressThrottled, coldSkipped, logf)
+			sendChat(chatPeerAddr(peer), data, egressLimit, health, stats, egressThrottled, coldSkipped, logf)
 		}
 	}
 }
@@ -308,20 +331,23 @@ func chatPeerAddr(peer string) string {
 	return net.JoinHostPort(host, chatPort)
 }
 
-func sendChat(addr string, data []byte, egressLimit *egress.Limiter, health *peerhealth.Tracker, egressThrottled, coldSkipped *atomic.Uint64, logf func(string)) {
+func sendChat(addr string, data []byte, egressLimit *egress.Limiter, health *peerhealth.Tracker, stats *meshstats.Recorder, egressThrottled, coldSkipped *atomic.Uint64, logf func(string)) {
 	host := peerHost(addr)
 	if !health.MaySend(host) {
 		coldSkipped.Add(1)
+		stats.IncColdSkipped()
 		return // cold peer in backoff window — skip silently, no dial
 	}
 	if !egressLimit.Allow(host) {
 		egressThrottled.Add(1)
+		stats.IncEgressThrottled()
 		logf("chat egress throttled -> " + addr)
 		return
 	}
 	conn, err := net.DialTimeout("udp", addr, time.Second)
 	if err != nil {
 		health.RecordFailure(host)
+		stats.IncSendFail()
 		logf(fmt.Sprintf("chat dial %s failed: %s (consec=%d)", addr, err.Error(), health.ConsecutiveFailures(host)))
 		return
 	}
@@ -329,9 +355,11 @@ func sendChat(addr string, data []byte, egressLimit *egress.Limiter, health *pee
 	_ = conn.SetWriteDeadline(time.Now().Add(time.Second))
 	if _, err := conn.Write(data); err != nil {
 		health.RecordFailure(host)
+		stats.IncSendFail()
 		logf(fmt.Sprintf("chat send %s failed: %s (consec=%d)", addr, err.Error(), health.ConsecutiveFailures(host)))
 	} else {
 		health.RecordSuccess(host)
+		stats.IncSendOK()
 		logf("chat sent -> " + addr)
 	}
 }
@@ -346,7 +374,7 @@ func peerHost(addr string) string {
 	return addr
 }
 
-func sendBlock(device string, vValue float64, work *pow.WorkProof, params map[string]float64, peers []string, key []byte, egressLimit *egress.Limiter, health *peerhealth.Tracker, egressThrottled, coldSkipped *atomic.Uint64, logf func(string)) {
+func sendBlock(device string, vValue float64, work *pow.WorkProof, params map[string]float64, peers []string, key []byte, egressLimit *egress.Limiter, health *peerhealth.Tracker, stats *meshstats.Recorder, egressThrottled, coldSkipped *atomic.Uint64, logf func(string)) {
 	if len(peers) == 0 {
 		logf(fmt.Sprintf("local block device=%s v=%.4f (no peers)", device, vValue))
 		return
@@ -371,25 +399,30 @@ func sendBlock(device string, vValue float64, work *pow.WorkProof, params map[st
 		host := peerHost(addr)
 		if !health.MaySend(host) {
 			coldSkipped.Add(1)
+			stats.IncColdSkipped()
 			continue // cold peer in backoff window — skip silently, no dial
 		}
 		if !egressLimit.Allow(host) {
 			egressThrottled.Add(1)
+			stats.IncEgressThrottled()
 			logf("egress throttled " + addr + " (burst protection)")
 			continue
 		}
 		conn, err := net.DialTimeout("udp", addr, time.Second)
 		if err != nil {
 			health.RecordFailure(host)
+			stats.IncSendFail()
 			logf(fmt.Sprintf("dial %s failed: %s (consec=%d)", addr, err.Error(), health.ConsecutiveFailures(host)))
 			continue
 		}
 		_ = conn.SetWriteDeadline(time.Now().Add(time.Second))
 		if _, err := conn.Write(data); err != nil {
 			health.RecordFailure(host)
+			stats.IncSendFail()
 			logf(fmt.Sprintf("send %s failed: %s (consec=%d)", addr, err.Error(), health.ConsecutiveFailures(host)))
 		} else {
 			health.RecordSuccess(host)
+			stats.IncSendOK()
 			logf(fmt.Sprintf("sent device=%s -> %s", device, addr))
 		}
 		conn.Close()

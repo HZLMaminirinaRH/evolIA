@@ -53,6 +53,15 @@ go/                      Go module `evolia` — networking
                          spam, no attack score). Keyed by host so blocks+chat share
                          the verdict. Send-side signal only — receive-side correlation
                          is Phase 3.
+  meshstats/             UDP transport telemetry recorder + JSON persister: each
+                         mesh-sync cycle writes evolia_mesh_stats.json (sends_ok,
+                         sends_fail, peers_cold, throttle_events {egress, ingress_
+                         defense, cold_skipped}, attacks_by_flow {blocks/chat × kind},
+                         receives, defense_level, updated_at). The Android UI reads
+                         this file for live diagnostic, parallel to evolia_chat_bt_
+                         stats.json for the Bluetooth transport. Atomic writes via
+                         paths.WriteFileAtomic so a half-written stats file is never
+                         observable.
   chat/                  opaque transport for the app's end-to-end peer chat: routing
                          envelope (Message) around a sealed body the relay NEVER decrypts,
                          outbox drain (atomic rename) + inbox append (id dedup) + injection-
