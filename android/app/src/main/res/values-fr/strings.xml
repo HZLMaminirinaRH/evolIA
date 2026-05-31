@@ -48,93 +48,11 @@
     <string name="chat_contact_bundle">Clé publique (bundle)</string>
     <string name="chat_contact_added">Contact ajouté.</string>
     <string name="chat_contact_invalid">Le nom et le bundle sont obligatoires.</string>
-    <string name="chat_contact_invalid_bundle">Bundle invalide — collez la clé publique exacte (128 caractères) partagée par votre pair.</string>
-    <string name="chat_message_hint">Message…</string>
-    <string name="chat_send">Envoyer</string>
-    <string name="chat_no_contact">Choisis d\'abord un contact.</string>
-    <string name="chat_no_contacts">(aucun contact)</string>
-    <string name="chat_send_failed">Clé invalide — envoi échoué.</string>
-    <string name="chat_send_failed_some">Échec de l\'envoi à : %s</string>
-    <string name="chat_recipients_none">Destinataires : (aucun — appuyez pour choisir)</string>
-    <string name="chat_recipients_label">Destinataires : %s</string>
-    <string name="chat_recipients_pick">Choisir les destinataires</string>
-    <string name="chat_contact_fingerprint_label">Empreinte : %s</string>
-    <string name="chat_contact_fingerprint_pending">Empreinte : (collez la clé publique du destinataire ci-dessus)</string>
-    <string name="chat_notif_title">Nouveau message dans evolIA</string>
-    <string name="chat_notif_content">De %s — appuyez pour ouvrir le chat</string>
-    <string name="chat_channel_messages">Messages du chat</string>
-    <string name="chat_empty">Aucun message.</string>
-    <string name="chat_inactive">evolIA arrêté — messagerie inactive (les messages sont effacés à l\'arrêt).</string>
-    <string name="chat_me_prefix">moi → %1$s : %2$s</string>
-
-    <!-- Dashboard -->
-    <string name="dashboard_wallet">Wallet ETH (à financer en gas):</string>
-    <string name="dashboard_onchain_balance">BTC-e on-chain (transférable) : %.2f</string>
-    <string name="dashboard_onchain_help">(*)</string>
-
-    <!-- Échange BTC-e on-chain -->
-    <string name="msg_auth_needed">Auth propriétaire non configurée — rouvrez evolIA et complétez la configuration du PIN et du mot de passe.</string>
-    <string name="transfer_choice_title">Comment transférer des BTC-e ?</string>
-    <string name="transfer_choice_message">Choisissez un mode de transfert :\n\n• On-chain (recommandé) : sûr, final, réglé sur la blockchain, nécessite RPC\n• Local P2P (à risque) : promesse entre pairs, compatible hors-ligne, pas besoin de blockchain</string>
-    <string name="transfer_choice_onchain">On-chain (sûr)</string>
-    <string name="transfer_choice_local">Local P2P (à risque)</string>
-    <string name="transfer_title">Transférer du BTC-e (on-chain)</string>
-    <string name="transfer_to_hint">Adresse du destinataire (0x…)</string>
-    <string name="transfer_amount_hint">Montant (BTC-e)</string>
-    <string name="transfer_invalid">Adresse ou montant invalide.</string>
-    <string name="msg_transfer_sending">Envoi du transfert on-chain…</string>
-    <string name="msg_transfer_success">%1$.2f BTC-e envoyés à %2$s</string>
-    <string name="msg_transfer_local">Non réglé on-chain : %1$s</string>
-    <string name="msg_transfer_failed">Échec du transfert : %1$s</string>
-    <string name="transfer_local_title">Transfert P2P local (promesse entre pairs)</string>
-    <string name="transfer_local_warning">Ceci est un transfert hors-ligne, non contraignant. Vous faites une promesse entre pairs d\'envoyer des BTC-e, mais ce n\'est PAS réglé sur la blockchain. Le destinataire doit vous faire confiance. Le réseau maillé peut détecter et contenir les doubles dépenses malveillants via la défense adaptative, mais cet enregistrement reste local.\n\nProcédez à vos risques.</string>
-    <string name="transfer_local_record">Enregistrer un transfert P2P local</string>
-    <string name="msg_transfer_local_recorded">Promesse locale enregistrée : %1$.2f BTC-e à %2$s. Le maillage peut vérifier les réclamations si partagées.</string>
-    <string name="msg_transfer_local_failed">Échec de l\'enregistrement : %1$s</string>
-    <string name="transfer_local_no_contact">Ajoutez d\'abord un contact de chat — un transfert hors ligne est acheminé au pair par le maillage chiffré.</string>
-    <string name="transfer_channel_name">Transferts BTC-e</string>
-    <string name="transfer_notif_sent_title">BTC-e envoyés (accusé d\'envoi)</string>
-    <string name="transfer_notif_sent_onchain">On-chain : %1$.2f BTC-e envoyés à %2$s</string>
-    <string name="transfer_notif_sent_offline">Hors ligne (promesse entre pairs) : %1$.2f BTC-e envoyés à %2$s</string>
-    <string name="transfer_notif_recv_title">BTC-e reçus (accusé de réception)</string>
-    <string name="transfer_notif_recv_onchain">On-chain : +%1$.2f BTC-e de %2$s</string>
-    <string name="transfer_notif_recv_offline">Hors ligne (promesse entre pairs) : +%1$.2f BTC-e de %2$s</string>
-    <string name="receive_preparing">Préparation de votre adresse…</string>
-    <string name="receive_unavailable">Adresse indisponible (crypto on-chain en échec).</string>
-    <string name="receive_title">Recevoir du BTC-e</string>
-    <string name="receive_explain">Partagez cette adresse — les pairs y transfèrent du BTC-e et votre solde se met à jour automatiquement on-chain :\n\n%1$s</string>
-    <string name="receive_copy">Copier l\'adresse</string>
-    <string name="msg_copied">Copié dans le presse-papiers</string>
-    <string name="chain_config_title">Réglages on-chain (RPC)</string>
-    <string name="chain_config_rpc_hint">URL RPC (https://… ou http://…:8545)</string>
-    <string name="chain_config_chainid_hint">chain_id (ex. 11155111)</string>
-    <string name="chain_config_saved">Réglages on-chain enregistrés.</string>
-    <string name="chain_config_invalid_url">URL RPC invalide — elle doit commencer par https:// ou http:// et avoir un hôte.</string>
-    <string name="chain_config_invalid_chainid">chain_id invalide — ce doit être un entier positif.</string>
-    <string name="guide_title">Échange on-chain — guide pour débutants</string>
-    <string name="guide_body">Vos BTC-e représentent la valeur qu\'evolIA construit à partir de votre activité. « On-chain » signifie qu\'un transfert est inscrit sur une blockchain — un registre partagé et infalsifiable — de sorte qu\'il ne peut être ni falsifié ni dépensé deux fois. Échanger on-chain demande trois choses, expliquées ci-dessous : une connexion à la blockchain (RPC), de petits frais de réseau (gas), et l\'adresse du destinataire. Nouveau dans la crypto ? Lisez la suite — chaque étape est expliquée simplement.</string>
-    <string name="guide_s1_title">1. Qu\'est-ce qu\'un RPC, et comment le configurer</string>
-    <string name="guide_s1_body">Une blockchain fonctionne sur de nombreux ordinateurs appelés nœuds. Un RPC est tout simplement l\'adresse web (une URL) de l\'un de ces nœuds — la porte à laquelle l\'app frappe pour lire les soldes et envoyer des transferts. Vous indiquez aussi un chain_id, un nombre qui identifie le réseau utilisé. Ces deux éléments s\'obtiennent EN DEHORS de l\'app (un navigateur web sur le téléphone, ou un PC), puis se placent dans la config d\'evolIA. Voici comment, étape par étape.\n\nOption A — un réseau de test public (le plus rapide, sans compte) :\n1. Dans le navigateur de votre téléphone, ouvrez chainlist.org.\n2. Activez \"Testnets\" et cherchez un réseau de test (ex. Sepolia).\n3. Il liste des URL RPC prêtes à l\'emploi et affiche le chain_id (Sepolia = 11155111).\n4. Copiez une URL RPC et le chain_id.\n\nOption B — un fournisseur RPC gratuit (plus stable, inscription gratuite) :\n1. Dans le navigateur, ouvrez un fournisseur gratuit (ex. Alchemy, Infura ou Ankr).\n2. Créez un compte gratuit (e-mail + mot de passe), puis un nouveau projet/app.\n3. Choisissez le réseau ; vous recevez une URL RPC en https:// — copiez-la.\n4. Le chain_id est celui du réseau choisi (vérifiez sur chainlist.org au besoin).\n\nOption C — un nœud local entre amis (sans internet, contrôle total) :\n1. Sur un PC du même Wi-Fi, lancez un nœud local gratuit (ex. Ganache).\n2. Votre URL RPC est http:// + l\'IP locale du PC + :8545 (ex. http://192.168.1.20:8545).\n3. Le chain_id est l\'id du nœud (par défaut 1337 pour Ganache).\n\nOù evolIA les lit : le fichier evolia_chain_config.json contient rpc_url et chain_id, ex. {\"rpc_url\": \"https://…\", \"chain_id\": 11155111}. Sur Termux il se trouve dans votre dossier evolia. Sur Android, appuyez sur \"Réglages on-chain (RPC)\" et collez-y l\'URL RPC et le chain_id. S\'il est vide ou absent, evolIA reste en mode LOCAL et rien n\'est réglé on-chain. Conseil : commencez sur un réseau de test — il se comporte exactement pareil, sans aucun risque.</string>
-    <string name="guide_s2_title">2. Ce qu\'est le « gas », et comment l\'approvisionner</string>
-    <string name="guide_s2_body">Chaque blockchain prélève de petits frais, appelés gas, pour traiter une transaction. Le gas se paie dans la monnaie propre du réseau (sa « monnaie native »). Une toute petite quantité suffit toujours.\n\nDeux situations :\n• Réseau de test (recommandé pour débuter) : le gas est gratuit. Les comptes locaux sont déjà approvisionnés, ou un « faucet » gratuit vous donne des jetons de test. Pas de banque, pas de carte, pas d\'argent.\n• Réseau public réel : la monnaie native coûte de l\'argent réel ; vous en achetez donc une petite quantité que vous envoyez à votre adresse (affichée en bas de cette page).\n\nComment obtenir la monnaie avec de l\'argent réel : ouvrez un compte sur une plateforme comme Binance ou OKX, puis approvisionnez-le — à Madagascar, cela se fait couramment via Mobile Money (MVola, Orange Money, Airtel Money) sur le marché P2P de la plateforme, ou par carte Visa/Mastercard, ou par virement bancaire. Achetez une petite quantité de la monnaie native du réseau, puis retirez-la vers votre adresse evolIA. IMPORTANT : choisissez le bon réseau lors du retrait — envoyer sur le mauvais réseau fait perdre les fonds.</string>
-    <string name="guide_s3_title">3. Envoyer, recevoir, et utiliser Binance / OKX</string>
-    <string name="guide_s3_body">À savoir : les BTC-e vivent dans le contrat d\'evolIA et circulent directement entre utilisateurs d\'evolIA. Ce n\'est PAS une monnaie cotée sur Binance ou OKX — vous ne pouvez pas envoyer des BTC-e vers une plateforme. Les plateformes servent uniquement à obtenir la monnaie de gas qui finance votre adresse.\n\nPour envoyer : demandez à l\'autre personne son adresse evolIA (son écran Recevoir affiche une adresse 0x…). Appuyez sur Transférer, collez l\'adresse et le montant, puis confirmez avec votre PIN/mot de passe. La blockchain règle l\'opération et il est impossible de dépenser plus que son solde.\n\nPour recevoir : appuyez sur Recevoir et partagez votre adresse 0x…. Quand quelqu\'un y transfère, votre solde se met à jour tout seul — la réception est automatique, rien à faire.\n\nSi vous utilisez Binance/OKX : c\'est de là que vous retirez la monnaie de gas vers votre adresse evolIA (une adresse 0x… standard, sur le bon réseau). L\'échange de BTC-e, lui, se fait toujours entre utilisateurs d\'evolIA, dans l\'app.</string>
-    <string name="guide_s4_title">4. Rester en sécurité</string>
-    <string name="guide_s4_body">• Votre clé privée reste chiffrée sur ce téléphone — ne la partagez jamais, ni votre PIN, ni votre mot de passe.\n• Vérifiez toujours l\'adresse et le réseau avant d\'envoyer. Les transferts sont définitifs.\n• Commencez sur un réseau de test avec des personnes de confiance : même expérience, aucun argent en jeu.\n• Ne gardez qu\'un peu de gas — les frais sont minimes.</string>
-    <string name="guide_address_label">Votre adresse (envoyez le gas ici) :</string>
-    <string name="guide_address_pending">(apparaît après la première activité on-chain)</string>
-
-    <!-- Sans-fil + arrière-plan -->
-    <string name="chat_radios_title">Activer le sans-fil</string>
-    <string name="chat_enable_both">Pour la messagerie pair-à-pair, activez le Bluetooth et le Wi-Fi afin que vos messages atteignent les pairs proches. Le Bluetooth fonctionne sans internet.\n\nIMPORTANT : allumer le Bluetooth ne suffit pas — il faut aussi APPAIRER les deux téléphones dans les réglages Bluetooth (Appairer un nouvel appareil). Sans appairage au niveau système, evolIA ne peut pas atteindre le pair par Bluetooth.</string>
-    <string name="chat_enable_bluetooth">Pour la messagerie hors-ligne, activez le Bluetooth afin que vos messages atteignent les pairs proches sans internet.</string>
-    <string name="chat_enable_wifi">Activez le Wi-Fi pour que vos messages atteignent les pairs de votre réseau local.</string>
-    <string name="chat_open_bluetooth_settings">Réglages Bluetooth</string>
-    <string name="chat_open_wifi_settings">Réglages Wi-Fi</string>
+    <string name="chat_no_contacts">Aucun contact.</string>
     <string name="chat_diag_button">Diagnostiquer le transport</string>
     <string name="chat_diag_title">Portée pair-à-pair</string>
     <string name="chat_diag_message">RADIO\n• Bluetooth : %1$s\n• Permission BT : %2$s\n• Wi-Fi : %5$s\n\nAPPAREILS APPAIRÉS (%3$d) :\n%4$s\n\nCOMPTEURS ENVOI (depuis démarrage)\n• Frames envoyés : %6$d\n• Tentatives connect : %7$d\n• Connexions réussies : %8$d\n\nCOMPTEURS RÉCEPTION (depuis démarrage)\n• Connexions acceptées : %9$d\n• Frames reçus : %10$d\n• Rejets à l\'intake : %11$d\n\nFILE D\'ATTENTE : %12$d message(s) en attente\n\nCOMMENT INTERPRÉTER :\n• Si « Tentatives connect » reste à 0 : aucun pair tenté (pas d\'appareil appairé ou radio coupée).\n• Si « tentatives &gt; 0 » mais « réussies = 0 » : l\'appareil appairé ne fait pas tourner evolIA (ou vous avez appairé une voiture/casque, pas l\'autre téléphone).\n• Si « réussies &gt; 0 » mais le destinataire affiche « Frames reçus = 0 » : la connexion tombe avant que le frame passe (problème de portée).\n• Si le destinataire affiche « Frames reçus &gt; 0 » mais le message n\'apparaît pas : vérifiez la concordance des empreintes (empreinte du contact côté envoyeur = identité côté destinataire).</string>
-    <string name="chat_diag_udp_section">\n\nTRANSPORT WI-FI / UDP (depuis démarrage)\n• Envois réussis : %1$d\n• Envois échoués : %2$d\n• Pairs froids : %3$d / %4$d connus\n• Événements throttle :\n   - Egress (anti auto-DoS) : %5$d\n   - Défense entrante : %6$d\n   - Pair froid sauté : %7$d\n• Réceptions : blocs=%8$d, chat=%9$d\n• Attaques (blocs) : inj=%10$d, sig=%11$d, forge=%12$d, malformé=%13$d\n• Attaques (chat) : inj=%14$d, malformé=%15$d\n• Niveau défense : %16$.2f\n• Cycle vivant : %17$d ms (base %18$d ms — étirement adaptatif sous pression, jusqu\'à 2×)\n\nCOMMENT INTERPRÉTER (UDP) :\n• Si « Envois réussis » reste à 0 : mesh-sync n\'atteint aucun pair (binaire non lancé, ou evolia_peers.json vide).\n• Si « Envois réussis &gt; 0 » mais le destinataire affiche « Réceptions chat = 0 » : les datagrammes arrivent mais l\'empreinte ne correspond pas (ou son mesh-sync est muet).\n• « Pairs froids &gt; 0 » : N pairs sont dans la fenêtre de backoff exponentiel (5s → 5 min) après échecs répétés — pas tentés jusqu\'à expiration.\n• Throttle : « Egress » est préventif, « Défense entrante » est réactif à une pression hostile, « Pair froid sauté » signifie que la santé du pair a évité un Dial inutile.\n• « Cycle vivant &gt; cycle base » : la boucle est étirée car la défense absorbée est non-nulle — économie de batterie sous pression hostile. Revient à la base automatiquement quand le buffer se décharge.</string>
+    <string name="chat_diag_udp_section">\n\nTRANSPORT WI-FI / UDP (depuis démarrage)\n• Envois réussis : %1$d\n• Envois échoués : %2$d\n• Pairs froids : %3$d / %4$d connus\n• Événements throttle :\n   - Egress (anti auto-DoS) : %5$d\n   - Défense entrante : %6$d\n   - Pair froid sauté : %7$d\n• Réceptions : blocs=%8$d, chat=%9$d\n• Attaques (blocs) : inj=%10$d, sig=%11$d, forge=%12$d, malformé=%13$d\n• Attaques (chat) : inj=%14$d, malformé=%15$d\n• Niveaux défense (intakes séparés) :\n   - Blocs : %16$.2f\n   - Chat : %17$.2f\n• Cycle vivant : %18$d ms (base %19$d ms — étirement adaptatif sous pression, jusqu\'à 2×)\n\nCOMMENT INTERPRÉTER (UDP) :\n• Si « Envois réussis » reste à 0 : mesh-sync n\'atteint aucun pair (binaire non lancé, ou evolia_peers.json vide).\n• Si « Envois réussis &gt; 0 » mais le destinataire affiche « Réceptions chat = 0 » : les datagrammes arrivent mais l\'empreinte ne correspond pas (ou son mesh-sync est muet).\n• « Pairs froids &gt; 0 » : N pairs sont dans la fenêtre de backoff exponentiel (5s → 5 min) après échecs répétés — pas tentés jusqu\'à expiration.\n• Throttle : « Egress » est préventif, « Défense entrante » est réactif à une pression hostile, « Pair froid sauté » signifie que la santé du pair a évité un Dial inutile.\n• Niveaux défense : avec l\'isolation par flux, blocs et chat sont throttlés indépendamment. Une attaque chat ne prive pas la propagation des blocs, et vice versa. Le cycle s\'étire par le max des deux niveaux.\n• « Cycle vivant &gt; cycle base » : la boucle est étirée car une ou les deux défenses ont absorbé de la pression — économie de batterie sous attaque. Revient à la base automatiquement quand les deux buffers se déchargent.</string>
     <string name="chat_diag_on">ACTIVÉ</string>
     <string name="chat_diag_off">DÉSACTIVÉ</string>
     <string name="chat_diag_pair_device">Appairer un appareil</string>

@@ -511,7 +511,8 @@ class ChatActivity : AppCompatActivity() {
     /** Build the Wi-Fi / UDP section appended to the BT diagnostic dialog. The
      *  whole block lives in code (rather than as one giant format string) so
      *  the multi-language strings.xml stays small and each row is one i18n key.
-     *  Field names match go/meshstats.Snapshot's JSON layout. */
+     *  Field names match go/meshstats.Snapshot's JSON layout. With flow
+     *  isolation (Opt 5) we track separate defense levels for blocks and chat. */
     private fun formatUdpDiagnosticSection(s: org.json.JSONObject): String {
         val throttles = s.optJSONObject("throttle_events") ?: org.json.JSONObject()
         val receives = s.optJSONObject("receives") ?: org.json.JSONObject()
@@ -534,7 +535,8 @@ class ChatActivity : AppCompatActivity() {
             blockAtk.optLong("malformed"),
             chatAtk.optLong("injection"),
             chatAtk.optLong("malformed"),
-            s.optDouble("defense_level", 0.0),
+            s.optDouble("block_defense_level", 0.0),
+            s.optDouble("chat_defense_level", 0.0),
             s.optLong("cycle_ms"),
             s.optLong("base_cycle_ms"),
         )
