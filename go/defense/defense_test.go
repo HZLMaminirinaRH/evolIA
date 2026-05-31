@@ -63,14 +63,14 @@ func TestCeilingFactorTightensWithDefense(t *testing.T) {
 
 func TestPressureMapsLevelTo01(t *testing.T) {
 	cases := []struct {
-		level  float64
+		level            float64
 		wantMin, wantMax float64
 	}{
-		{-5, 0, 0},                                        // negative clamps to 0
-		{0, 0, 0},                                         // calm
-		{pressureSaturation / 2, 0.49, 0.51},             // midway
-		{pressureSaturation, 0.99, 1.01},                // saturation
-		{pressureSaturation + 1000, 0.99, 1.01},         // beyond saturation clamps to 1
+		{-5, 0, 0},                              // negative clamps to 0
+		{0, 0, 0},                               // calm
+		{pressureSaturation / 2, 0.49, 0.51},    // midway
+		{pressureSaturation, 0.99, 1.01},        // saturation
+		{pressureSaturation + 1000, 0.99, 1.01}, // beyond saturation clamps to 1
 	}
 	for i, tc := range cases {
 		got := Pressure(tc.level)
@@ -83,13 +83,13 @@ func TestPressureMapsLevelTo01(t *testing.T) {
 func TestAdaptiveCycleStretches(t *testing.T) {
 	base := 5 * time.Second
 	cases := []struct {
-		level       float64
+		level                float64
 		wantMinMs, wantMaxMs int64
 	}{
-		{0, 4999, 5001},                                    // calm = base
-		{pressureSaturation / 2, 7400, 7600},             // 50% pressure ≈ 1.5×
-		{pressureSaturation, 9900, 10100},                // full pressure = 2×
-		{pressureSaturation + 1000, 9900, 10100},         // beyond saturation still 2×
+		{0, 4999, 5001},                          // calm = base
+		{pressureSaturation / 2, 7400, 7600},     // 50% pressure ≈ 1.5×
+		{pressureSaturation, 9900, 10100},        // full pressure = 2×
+		{pressureSaturation + 1000, 9900, 10100}, // beyond saturation still 2×
 	}
 	for i, tc := range cases {
 		got := AdaptiveCycle(base, tc.level)
