@@ -18,10 +18,15 @@ func (c *fakeClock) now() time.Time {
 	return c.t
 }
 
-func (c *fakeClock) advance(d time.Duration) {
+// advance moves the fake clock forward by d and returns the new time, so
+// callers can assert against the post-advance value if they want and the
+// helper itself satisfies the 'every function returns a non-null value'
+// project rule.
+func (c *fakeClock) advance(d time.Duration) time.Time {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.t = c.t.Add(d)
+	return c.t
 }
 
 func TestAllow_FirstCallSucceeds(t *testing.T) {
