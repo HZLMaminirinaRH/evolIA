@@ -346,21 +346,21 @@ func sendChat(addr string, data []byte, egressLimit *egress.Limiter, health *pee
 	}
 	conn, err := net.DialTimeout("udp", addr, time.Second)
 	if err != nil {
-		health.RecordFailure(host)
-		stats.Record(meshstats.SendFail)
-		logf(fmt.Sprintf("chat dial %s failed: %s (consec=%d)", addr, err.Error(), health.ConsecutiveFailures(host)))
+		consec := health.RecordFailure(host)
+		fails := stats.Record(meshstats.SendFail)
+		logf(fmt.Sprintf("chat dial %s failed: %s (consec=%d, lifetime_fails=%d)", addr, err.Error(), consec, fails))
 		return
 	}
 	defer conn.Close()
 	_ = conn.SetWriteDeadline(time.Now().Add(time.Second))
 	if _, err := conn.Write(data); err != nil {
-		health.RecordFailure(host)
-		stats.Record(meshstats.SendFail)
-		logf(fmt.Sprintf("chat send %s failed: %s (consec=%d)", addr, err.Error(), health.ConsecutiveFailures(host)))
+		consec := health.RecordFailure(host)
+		fails := stats.Record(meshstats.SendFail)
+		logf(fmt.Sprintf("chat send %s failed: %s (consec=%d, lifetime_fails=%d)", addr, err.Error(), consec, fails))
 	} else {
-		health.RecordSuccess(host)
-		stats.Record(meshstats.SendOK)
-		logf("chat sent -> " + addr)
+		successes := health.RecordSuccess(host)
+		_ = stats.Record(meshstats.SendOK)
+		logf(fmt.Sprintf("chat sent -> %s (peer_successes=%d)", addr, successes))
 	}
 }
 
@@ -410,20 +410,20 @@ func sendBlock(device string, vValue float64, work *pow.WorkProof, params map[st
 		}
 		conn, err := net.DialTimeout("udp", addr, time.Second)
 		if err != nil {
-			health.RecordFailure(host)
-			stats.Record(meshstats.SendFail)
-			logf(fmt.Sprintf("dial %s failed: %s (consec=%d)", addr, err.Error(), health.ConsecutiveFailures(host)))
+			consec := health.RecordFailure(host)
+			fails := stats.Record(meshstats.SendFail)
+			logf(fmt.Sprintf("dial %s failed: %s (consec=%d, lifetime_fails=%d)", addr, err.Error(), consec, fails))
 			continue
 		}
 		_ = conn.SetWriteDeadline(time.Now().Add(time.Second))
 		if _, err := conn.Write(data); err != nil {
-			health.RecordFailure(host)
-			stats.Record(meshstats.SendFail)
-			logf(fmt.Sprintf("send %s failed: %s (consec=%d)", addr, err.Error(), health.ConsecutiveFailures(host)))
+			consec := health.RecordFailure(host)
+			fails := stats.Record(meshstats.SendFail)
+			logf(fmt.Sprintf("send %s failed: %s (consec=%d, lifetime_fails=%d)", addr, err.Error(), consec, fails))
 		} else {
-			health.RecordSuccess(host)
-			stats.Record(meshstats.SendOK)
-			logf(fmt.Sprintf("sent device=%s -> %s", device, addr))
+			successes := health.RecordSuccess(host)
+			_ = stats.Record(meshstats.SendOK)
+			logf(fmt.Sprintf("sent device=%s -> %s (peer_successes=%d)", device, addr, successes))
 		}
 		conn.Close()
 	}

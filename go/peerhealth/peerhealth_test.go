@@ -34,7 +34,9 @@ func TestMaySend_UnknownPeerIsWarm(t *testing.T) {
 func TestRecordFailure_StartsBackoff(t *testing.T) {
 	c := &fakeClock{t: time.Unix(1_700_000_000, 0)}
 	tr := NewTracker(c.now)
-	tr.RecordFailure("192.168.1.50")
+	if got := tr.RecordFailure("192.168.1.50"); got != 1 {
+		t.Fatalf("RecordFailure must return the new consec count (1), got %d", got)
+	}
 	if tr.MaySend("192.168.1.50") {
 		t.Fatal("a peer that just failed must be in backoff")
 	}
@@ -47,6 +49,26 @@ func TestRecordFailure_StartsBackoff(t *testing.T) {
 	c.advance(2 * time.Second)
 	if !tr.MaySend("192.168.1.50") {
 		t.Fatal("peer must be re-warm once the backoff window has elapsed")
+	}
+}
+
+func TestRecordFailure_ReturnsGrowingConsecCount(t *testing.T) {
+	c := &fakeClock{t: time.Unix(1_700_000_000, 0)}
+	tr := NewTracker(c.now)
+	for want := 1; want <= 5; want++ {
+		if got := tr.RecordFailure("p"); got != want {
+			t.Fatalf("RecordFailure return: got %d, want %d", got, want)
+		}
+	}
+}
+
+func TestRecordSuccess_ReturnsGrowingTotalSuccesses(t *testing.T) {
+	c := &fakeClock{t: time.Unix(1_700_000_000, 0)}
+	tr := NewTracker(c.now)
+	for want := uint64(1); want <= 5; want++ {
+		if got := tr.RecordSuccess("p"); got != want {
+			t.Fatalf("RecordSuccess return: got %d, want %d", got, want)
+		}
 	}
 }
 

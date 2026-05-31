@@ -34,7 +34,10 @@ func TestRecord_RoutesEachEventToItsCounter(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			r := NewRecorder()
 			for i := 0; i < tc.hits; i++ {
-				r.Record(tc.event)
+				got := r.Record(tc.event)
+				if got != uint64(i+1) {
+					t.Fatalf("%s Record return on call %d: got %d, want %d", tc.name, i+1, got, i+1)
+				}
 			}
 			if got := tc.extract(r.Snapshot(0, 0, 0)); got != uint64(tc.hits) {
 				t.Fatalf("%s after %d Record calls = %d, want %d", tc.name, tc.hits, got, tc.hits)
@@ -43,9 +46,11 @@ func TestRecord_RoutesEachEventToItsCounter(t *testing.T) {
 	}
 }
 
-func TestRecord_UnknownEventIsIgnored(t *testing.T) {
+func TestRecord_UnknownEventReturnsZero(t *testing.T) {
 	r := NewRecorder()
-	r.Record(Event(9999))
+	if got := r.Record(Event(9999)); got != 0 {
+		t.Fatalf("an unknown event must return 0 to signal no counter hit, got %d", got)
+	}
 	s := r.Snapshot(0, 0, 0)
 	// Every counter must still be zero; an unknown event must not panic and
 	// must not silently land on one of the known counters either.
@@ -57,9 +62,13 @@ func TestRecord_UnknownEventIsIgnored(t *testing.T) {
 
 func TestRecordAttack_RoutesAllBlockKinds(t *testing.T) {
 	r := NewRecorder()
-	r.RecordAttack(BlockFlow, Injection)
+	if got := r.RecordAttack(BlockFlow, Injection); got != 1 {
+		t.Fatalf("first BlockFlow/Injection must return 1, got %d", got)
+	}
 	r.RecordAttack(BlockFlow, BadSignature)
-	r.RecordAttack(BlockFlow, BadSignature)
+	if got := r.RecordAttack(BlockFlow, BadSignature); got != 2 {
+		t.Fatalf("second BlockFlow/BadSignature must return 2, got %d", got)
+	}
 	r.RecordAttack(BlockFlow, ForgedWork)
 	r.RecordAttack(BlockFlow, Malformed)
 	r.RecordAttack(BlockFlow, Malformed)
@@ -72,26 +81,33 @@ func TestRecordAttack_RoutesAllBlockKinds(t *testing.T) {
 
 func TestRecordAttack_RoutesTwoChatKinds(t *testing.T) {
 	r := NewRecorder()
-	r.RecordAttack(ChatFlow, Injection)
+	if got := r.RecordAttack(ChatFlow, Injection); got != 1 {
+		t.Fatalf("ChatFlow/Injection must return 1, got %d", got)
+	}
 	r.RecordAttack(ChatFlow, Malformed)
-	r.RecordAttack(ChatFlow, Malformed)
+	if got := r.RecordAttack(ChatFlow, Malformed); got != 2 {
+		t.Fatalf("second ChatFlow/Malformed must return 2, got %d", got)
+	}
 	c := r.Snapshot(0, 0, 0).AttacksByFlow.Chat
 	if c.Injection != 1 || c.Malformed != 2 {
 		t.Fatalf("chat attack routing wrong: got %+v", c)
 	}
 }
 
-func TestRecordAttack_ChatIgnoresInapplicableKinds(t *testing.T) {
+func TestRecordAttack_InapplicableChatComboReturnsZero(t *testing.T) {
 	r := NewRecorder()
 	// Chat envelopes carry no signature and no PoW — these combinations
-	// must be silently dropped (caller cannot legitimately produce them).
-	r.RecordAttack(ChatFlow, BadSignature)
-	r.RecordAttack(ChatFlow, ForgedWork)
+	// must be silently dropped AND return 0 to signal "no counter hit".
+	if got := r.RecordAttack(ChatFlow, BadSignature); got != 0 {
+		t.Fatalf("(ChatFlow, BadSignature) must return 0, got %d", got)
+	}
+	if got := r.RecordAttack(ChatFlow, ForgedWork); got != 0 {
+		t.Fatalf("(ChatFlow, ForgedWork) must return 0, got %d", got)
+	}
 	c := r.Snapshot(0, 0, 0).AttacksByFlow.Chat
 	if c.Injection|c.Malformed != 0 {
 		t.Fatalf("inapplicable chat kinds landed on a counter: %+v", c)
 	}
-	// And block-flow counters must NOT have been touched either.
 	b := r.Snapshot(0, 0, 0).AttacksByFlow.Blocks
 	if b.Injection|b.BadSignature|b.ForgedWork|b.Malformed != 0 {
 		t.Fatalf("chat-flow RecordAttack leaked into block counters: %+v", b)

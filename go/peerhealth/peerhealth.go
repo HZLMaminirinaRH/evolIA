@@ -74,8 +74,9 @@ func (t *Tracker) MaySend(peer string) bool {
 }
 
 // RecordSuccess clears the backoff window so peer is immediately eligible
-// again. A peer that has been cold and then recovers re-warms instantly.
-func (t *Tracker) RecordSuccess(peer string) {
+// again, and returns the peer's lifetime successes count so the caller can
+// log it (a non-zero return proves the call landed on a real bucket).
+func (t *Tracker) RecordSuccess(peer string) uint64 {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	s := t.touchLocked(peer)
@@ -83,11 +84,14 @@ func (t *Tracker) RecordSuccess(peer string) {
 	s.nextRetryAt = time.Time{}
 	s.successesTotal++
 	s.lastSuccessAt = t.now()
+	return s.successesTotal
 }
 
 // RecordFailure increments the consecutive-failure count and schedules the
-// next retry per the exponential curve (capped at maxBackoff).
-func (t *Tracker) RecordFailure(peer string) {
+// next retry per the exponential curve (capped at maxBackoff). Returns the
+// new consecutive-failure count so the caller can log "consec=N" without a
+// second ConsecutiveFailures lookup.
+func (t *Tracker) RecordFailure(peer string) int {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	s := t.touchLocked(peer)
@@ -95,6 +99,7 @@ func (t *Tracker) RecordFailure(peer string) {
 	s.failuresTotal++
 	s.lastFailureAt = t.now()
 	s.nextRetryAt = s.lastFailureAt.Add(backoffFor(s.consecutiveFailures))
+	return s.consecutiveFailures
 }
 
 // ColdCount reports how many tracked peers are currently in a backoff window,

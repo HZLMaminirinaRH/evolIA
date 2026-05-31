@@ -81,53 +81,58 @@ type Recorder struct {
 // NewRecorder builds a recorder with every counter at zero.
 func NewRecorder() *Recorder { return &Recorder{} }
 
-// Record routes one event to its counter. Unknown event values (a constant
-// added upstream the recorder has not learned about yet) are silently
-// ignored, so a new event class cannot crash the recorder.
-func (r *Recorder) Record(event Event) {
+// Record routes one event to its counter and returns the counter's new value
+// (atomic.Uint64.Add already gives us this for free). An unknown event value
+// (a constant added upstream the recorder has not learned about yet) is a no-
+// op and returns 0 — so a 0 return doubles as an "unrecognized event" signal
+// the caller can assert on in tests.
+func (r *Recorder) Record(event Event) uint64 {
 	switch event {
 	case SendOK:
-		r.sendsOK.Add(1)
+		return r.sendsOK.Add(1)
 	case SendFail:
-		r.sendsFail.Add(1)
+		return r.sendsFail.Add(1)
 	case EgressThrottled:
-		r.egressThrottled.Add(1)
+		return r.egressThrottled.Add(1)
 	case DefenseThrottled:
-		r.defenseThrottled.Add(1)
+		return r.defenseThrottled.Add(1)
 	case ColdSkipped:
-		r.coldSkipped.Add(1)
+		return r.coldSkipped.Add(1)
 	case BlockReceived:
-		r.blocksReceived.Add(1)
+		return r.blocksReceived.Add(1)
 	case ChatReceived:
-		r.chatReceived.Add(1)
+		return r.chatReceived.Add(1)
 	}
+	return 0
 }
 
-// RecordAttack routes one hostile-input event to its (flow, kind) counter.
-// (ChatFlow, BadSignature) and (ChatFlow, ForgedWork) are deliberately dropped
-// because chat envelopes carry neither signature nor PoW — the caller cannot
-// legitimately produce those combinations.
-func (r *Recorder) RecordAttack(flow Flow, kind AttackKind) {
+// RecordAttack routes one hostile-input event to its (flow, kind) counter and
+// returns the counter's new value. (ChatFlow, BadSignature) and (ChatFlow,
+// ForgedWork) are deliberately dropped — chat envelopes carry neither
+// signature nor PoW — so the caller cannot legitimately produce those
+// combinations and the return is 0 if they try.
+func (r *Recorder) RecordAttack(flow Flow, kind AttackKind) uint64 {
 	switch flow {
 	case BlockFlow:
 		switch kind {
 		case Injection:
-			r.blockInjection.Add(1)
+			return r.blockInjection.Add(1)
 		case BadSignature:
-			r.blockBadSignature.Add(1)
+			return r.blockBadSignature.Add(1)
 		case ForgedWork:
-			r.blockForgedWork.Add(1)
+			return r.blockForgedWork.Add(1)
 		case Malformed:
-			r.blockMalformed.Add(1)
+			return r.blockMalformed.Add(1)
 		}
 	case ChatFlow:
 		switch kind {
 		case Injection:
-			r.chatInjection.Add(1)
+			return r.chatInjection.Add(1)
 		case Malformed:
-			r.chatMalformed.Add(1)
+			return r.chatMalformed.Add(1)
 		}
 	}
+	return 0
 }
 
 // Snapshot is the JSON shape persisted to disk. Field names match the
