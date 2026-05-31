@@ -138,7 +138,9 @@ func (r *Recorder) RecordAttack(flow Flow, kind AttackKind) uint64 {
 // Snapshot is the JSON shape persisted to disk. Field names match the
 // counters the user asked for (sends_ok, sends_fail, peers_cold,
 // attacks_by_flow, throttle_events) so the Android UI consumes the file
-// with no mapping.
+// with no mapping. CycleMs is the duration the mesh loop is sleeping
+// between ticks RIGHT NOW (post-adaptive-stretch): equal to base_cycle_ms
+// at rest, up to 2× base under sustained pressure.
 type Snapshot struct {
 	UpdatedAt      string         `json:"updated_at"`
 	SendsOK        uint64         `json:"sends_ok"`
@@ -149,6 +151,8 @@ type Snapshot struct {
 	AttacksByFlow  AttacksByFlow  `json:"attacks_by_flow"`
 	Receives       ReceiveCounts  `json:"receives"`
 	DefenseLevel   float64        `json:"defense_level"`
+	BaseCycleMs    int64          `json:"base_cycle_ms"`
+	CycleMs        int64          `json:"cycle_ms"`
 }
 
 // ThrottleCounts groups the three throttle reasons so the UI shows WHY a send
@@ -187,9 +191,12 @@ type ReceiveCounts struct {
 }
 
 // Snapshot reads every counter once and folds in the externally-supplied
-// dynamic state (cold/known peer counts, defense level) so the file reflects
-// both monotonic activity and the live system snapshot at this moment.
-func (r *Recorder) Snapshot(peersCold, peersKnown int, defenseLevel float64) Snapshot {
+// dynamic state (cold/known peer counts, defense level, base + current cycle
+// in milliseconds) so the file reflects both monotonic activity and the live
+// system snapshot at this moment. baseCycle is the configured baseline;
+// currentCycle is the value after defense.AdaptiveCycle has stretched it for
+// this tick — they're equal at rest and diverge under pressure.
+func (r *Recorder) Snapshot(peersCold, peersKnown int, defenseLevel float64, baseCycle, currentCycle time.Duration) Snapshot {
 	return Snapshot{
 		UpdatedAt:  time.Now().UTC().Format(time.RFC3339),
 		SendsOK:    r.sendsOK.Load(),
@@ -218,14 +225,16 @@ func (r *Recorder) Snapshot(peersCold, peersKnown int, defenseLevel float64) Sna
 			Chat:   r.chatReceived.Load(),
 		},
 		DefenseLevel: defenseLevel,
+		BaseCycleMs:  baseCycle.Milliseconds(),
+		CycleMs:      currentCycle.Milliseconds(),
 	}
 }
 
 // PersistTo writes a snapshot to path atomically (temp file + fsync + rename,
 // via paths.WriteFileAtomic). A half-written stats file is impossible — a
 // reader sees either the previous version or the new one.
-func (r *Recorder) PersistTo(path string, peersCold, peersKnown int, defenseLevel float64) error {
-	data, err := json.MarshalIndent(r.Snapshot(peersCold, peersKnown, defenseLevel), "", "  ")
+func (r *Recorder) PersistTo(path string, peersCold, peersKnown int, defenseLevel float64, baseCycle, currentCycle time.Duration) error {
+	data, err := json.MarshalIndent(r.Snapshot(peersCold, peersKnown, defenseLevel, baseCycle, currentCycle), "", "  ")
 	if err != nil {
 		return err
 	}

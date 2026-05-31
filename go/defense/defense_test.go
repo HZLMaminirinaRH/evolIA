@@ -165,3 +165,56 @@ func TestInjectionDetector(t *testing.T) {
 		}
 	}
 }
+
+func TestAdaptiveCycle_CalmReturnsBase(t *testing.T) {
+	base := 5 * time.Second
+	if got := AdaptiveCycle(base, 0); got != base {
+		t.Fatalf("calm level must return base unchanged, got %v", got)
+	}
+}
+
+func TestAdaptiveCycle_SaturatedReturnsMaxMult(t *testing.T) {
+	base := 5 * time.Second
+	want := time.Duration(adaptiveCycleMaxMult * float64(base))
+	if got := AdaptiveCycle(base, pressureSaturation); got != want {
+		t.Fatalf("saturated level must return maxMult × base = %v, got %v", want, got)
+	}
+}
+
+func TestAdaptiveCycle_HalfPressureRampsSmoothly(t *testing.T) {
+	base := 5 * time.Second
+	// Half-saturation → (maxMult-1)/2 stretch → 1.5 × base for maxMult=2.
+	want := time.Duration(1.5 * float64(base))
+	if got := AdaptiveCycle(base, pressureSaturation/2); got != want {
+		t.Fatalf("half pressure must return 1.5×base = %v, got %v", want, got)
+	}
+}
+
+func TestAdaptiveCycle_NegativeLevelClampsToBase(t *testing.T) {
+	base := 5 * time.Second
+	if got := AdaptiveCycle(base, -42); got != base {
+		t.Fatalf("negative level must clamp via Pressure to base, got %v", got)
+	}
+}
+
+func TestAdaptiveCycle_ExcessiveLevelClampsAtMaxMult(t *testing.T) {
+	base := 5 * time.Second
+	want := time.Duration(adaptiveCycleMaxMult * float64(base))
+	if got := AdaptiveCycle(base, pressureSaturation*100); got != want {
+		t.Fatalf("level beyond saturation must clamp at maxMult × base = %v, got %v", want, got)
+	}
+}
+
+func TestAdaptiveCycle_MonotonicNonDecreasing(t *testing.T) {
+	base := 5 * time.Second
+	// As level rises across the range, the cycle never shrinks. This catches
+	// any future refactor that accidentally introduces non-monotonic stretching.
+	var prev time.Duration
+	for level := 0.0; level <= pressureSaturation*1.5; level += 0.5 {
+		cur := AdaptiveCycle(base, level)
+		if cur < prev {
+			t.Fatalf("non-monotonic: level=%v cur=%v prev=%v", level, cur, prev)
+		}
+		prev = cur
+	}
+}

@@ -535,6 +535,8 @@ class ChatActivity : AppCompatActivity() {
             chatAtk.optLong("injection"),
             chatAtk.optLong("malformed"),
             s.optDouble("defense_level", 0.0),
+            s.optLong("cycle_ms"),
+            s.optLong("base_cycle_ms"),
         )
     }
 

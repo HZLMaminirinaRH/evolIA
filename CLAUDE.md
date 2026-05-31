@@ -57,11 +57,20 @@ go/                      Go module `evolia` — networking
                          mesh-sync cycle writes evolia_mesh_stats.json (sends_ok,
                          sends_fail, peers_cold, throttle_events {egress, ingress_
                          defense, cold_skipped}, attacks_by_flow {blocks/chat × kind},
-                         receives, defense_level, updated_at). The Android UI reads
-                         this file for live diagnostic, parallel to evolia_chat_bt_
-                         stats.json for the Bluetooth transport. Atomic writes via
-                         paths.WriteFileAtomic so a half-written stats file is never
-                         observable.
+                         receives, defense_level, base_cycle_ms, cycle_ms, updated_at).
+                         The Android UI reads this file for live diagnostic, parallel
+                         to evolia_chat_bt_stats.json for the Bluetooth transport.
+                         Atomic writes via paths.WriteFileAtomic so a half-written
+                         stats file is never observable. cycle_ms vs base_cycle_ms
+                         surface defense.AdaptiveCycle's live stretch (see below).
+
+  Adaptive cycle (defense.AdaptiveCycle): mesh-sync's per-iteration sleep is no
+  longer fixed at baseCycle (default 5s). It scales with the absorbed-defense
+  level via Pressure(level)∈[0,1] — calm returns baseCycle unchanged, full
+  saturation returns 2×baseCycle. Pure function (no state), continuous (no
+  flapping), monotonic (a higher level never shortens the cycle). Battery and
+  outbound-surface relief under sustained attack; the listen goroutines are
+  independent of the cycle so ingress keeps flowing throttled by defense.Gate.
   chat/                  opaque transport for the app's end-to-end peer chat: routing
                          envelope (Message) around a sealed body the relay NEVER decrypts,
                          outbox drain (atomic rename) + inbox append (id dedup) + injection-

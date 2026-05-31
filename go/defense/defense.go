@@ -148,6 +148,26 @@ func Pressure(level float64) float64 {
 // admitFloor* — the throttle never shuts fully.
 const ceilingFloorFrac = 0.25
 
+// adaptiveCycleMaxMult caps how far AdaptiveCycle stretches the base cycle
+// under sustained hostile pressure. At full pressure the mesh-sync loop sleeps
+// 2× longer between emit ticks — a battery and outbound-surface win during
+// attack while listenBlocks/listenChat (independent goroutines) keep accepting
+// under the defense Gate's ingress throttling. 2× is conservative enough that
+// decay still happens within seconds of the attack stopping; pushing it higher
+// would slow recovery from a brief burst.
+const adaptiveCycleMaxMult = 2.0
+
+// AdaptiveCycle scales baseCycle up under hostile pressure. Calm (level 0)
+// returns baseCycle unchanged; saturation returns adaptiveCycleMaxMult ×
+// baseCycle; intermediate levels ramp smoothly via Pressure(level). Returns
+// the new cycle duration so the caller can both sleep on it and surface it
+// to telemetry. Pure function — no state, no side effects.
+func AdaptiveCycle(baseCycle time.Duration, level float64) time.Duration {
+	p := Pressure(level)
+	stretch := time.Duration(p * (adaptiveCycleMaxMult - 1) * float64(baseCycle))
+	return baseCycle + stretch
+}
+
 // CeilingFactor is the PoW arm of the evolutive coupling. It maps the absorbed-
 // defense level to a [ceilingFloorFrac, 1] multiplier the value validator applies
 // to a claim's growth headroom: calm (level 0) admits the full physical ceiling;

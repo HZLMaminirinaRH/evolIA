@@ -85,11 +85,15 @@ func main() {
 	// diagnostic UI can read live transport health, parallel to the existing
 	// evolia_chat_bt_stats.json for Bluetooth.
 	stats := meshstats.NewRecorder()
-	cycle := cycleInterval()
+	// baseCycle is what the env / default gives us; the actual sleep each tick
+	// is defense.AdaptiveCycle(baseCycle, def.Level()) so a saturated buffer
+	// stretches the loop toward 2× base — battery + outbound surface relief
+	// during attack, while the independent listen goroutines keep accepting.
+	baseCycle := cycleInterval()
 
 	logf := newLogger(paths.MeshSyncLog())
-	logf(fmt.Sprintf("start device=%s vault=%s cycle=%s listen=%s signed=%t",
-		self, vault, cycle, blockAddr, len(key) > 0))
+	logf(fmt.Sprintf("start device=%s vault=%s base_cycle=%s listen=%s signed=%t",
+		self, vault, baseCycle, blockAddr, len(key) > 0))
 
 	seen := map[string]bool{}
 	var mu sync.Mutex
@@ -137,10 +141,18 @@ func main() {
 		// Carry any queued chat envelopes to peers (opaque; never decrypted).
 		relayChat(paths.ChatOutbox(), peers, egressLimit, health, stats, &egressThrottled, &coldSkipped, logf)
 
-		// Persist the telemetry snapshot so the Android UI can read it. Best-
-		// effort — a write error is logged but never breaks the cycle (the next
-		// snapshot supersedes any half-failed one through the atomic rename).
-		if err := stats.PersistTo(paths.MeshStats(), health.ColdCount(), len(peers), def.Level()); err != nil {
+		// Adaptive cycle: under sustained hostile pressure the loop stretches
+		// toward 2× baseCycle so we emit less and spare the radio/battery; at
+		// rest it stays at baseCycle. Pressure(level) ∈ [0,1] smooths the
+		// transition so the cycle cannot flap, and the cycle returns to base
+		// automatically as the defense buffer decays on quiet ticks.
+		cycle := defense.AdaptiveCycle(baseCycle, def.Level())
+
+		// Persist the telemetry snapshot so the Android UI can read it (and see
+		// the live cycle vs the base cycle, surfacing the adaptive stretch).
+		// Best-effort — a write error is logged but never breaks the cycle (the
+		// next snapshot supersedes any half-failed one through the atomic rename).
+		if err := stats.PersistTo(paths.MeshStats(), health.ColdCount(), len(peers), def.Level(), baseCycle, cycle); err != nil {
 			logf("mesh stats persist error: " + err.Error())
 		}
 		time.Sleep(cycle)
@@ -158,11 +170,12 @@ func main() {
 		aEvo := float64(curAttacks - prevAttacks)
 		pFree := 0.1 * float64(curReceived-prevReceived)
 		coldNow := health.ColdCount()
-		if curAttacks != prevAttacks || curThrottled != prevThrottled || curEgressThrottled != prevEgressThrottled || curColdSkipped != prevColdSkipped || coldNow > 0 {
-			logf(fmt.Sprintf("intensity net=%.2f a_evo=%.1f p_free=%.2f d_evo=%.2f throttled=%d egress_throttled=%d cold_peers=%d cold_skipped=%d",
+		cycleStretched := cycle != baseCycle
+		if curAttacks != prevAttacks || curThrottled != prevThrottled || curEgressThrottled != prevEgressThrottled || curColdSkipped != prevColdSkipped || coldNow > 0 || cycleStretched {
+			logf(fmt.Sprintf("intensity net=%.2f a_evo=%.1f p_free=%.2f d_evo=%.2f throttled=%d egress_throttled=%d cold_peers=%d cold_skipped=%d cycle=%s",
 				defense.NetIntensity(aEvo, pFree, def.Level()), aEvo, pFree, def.Level(),
 				curThrottled-prevThrottled, curEgressThrottled-prevEgressThrottled,
-				coldNow, curColdSkipped-prevColdSkipped))
+				coldNow, curColdSkipped-prevColdSkipped, cycle))
 		}
 
 		// On a quiet cycle (no hostile datagram since the last one) relax the
