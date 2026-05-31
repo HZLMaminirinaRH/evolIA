@@ -116,7 +116,7 @@ func TestAdaptiveCycleMonotonic(t *testing.T) {
 func TestGateAllowsUnderCalm(t *testing.T) {
 	def := New(64)
 	g := NewGate(def, time.Now)
-	for i := 0; i < 25; i++ {
+	for i := 0; i < int(admitMaxBurst); i++ {
 		if !g.Allow("1.1.1.1") {
 			t.Fatalf("gate should allow source under calm (admission %d)", i+1)
 		}
