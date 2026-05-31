@@ -224,3 +224,22 @@ func TestFlowIsolation_DefenseIndependence(t *testing.T) {
 		t.Fatalf("chat decay must lower its level: before=%v after=%v", chatLevel, defChat.Level())
 	}
 }
+
+func TestInjectionDetector(t *testing.T) {
+	positives := []string{
+		"' OR '1'='1",
+		"'; DROP TABLE peers;--",
+		"a UNION SELECT password FROM users",
+	}
+	for _, s := range positives {
+		if !LooksLikeInjection(s) {
+			t.Fatalf("expected injection flagged: %q", s)
+		}
+	}
+	negatives := []string{"phone-galaxy-a52", "owner", "evolia-node"}
+	for _, s := range negatives {
+		if LooksLikeInjection(s) {
+			t.Fatalf("expected clean input: %q", s)
+		}
+	}
+}
