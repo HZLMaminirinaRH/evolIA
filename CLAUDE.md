@@ -45,6 +45,14 @@ go/                      Go module `evolia` — networking
                          radio. Independent of defense.Gate (which throttles hostile
                          ingress); a throttled send is dropped, not scored as an attack.
                          Burst 8, refill 4/s, keyed by host (blocks+chat share budget).
+  peerhealth/            per-peer send-side health tracker with exponential backoff:
+                         a peer whose Dial or Write fails enters a cooldown window
+                         (5s → 5min cap, doubling) and is skipped until it expires.
+                         A single success re-warms it instantly. Independent of
+                         defense and egress; a cold-peer skip is silent (no log
+                         spam, no attack score). Keyed by host so blocks+chat share
+                         the verdict. Send-side signal only — receive-side correlation
+                         is Phase 3.
   chat/                  opaque transport for the app's end-to-end peer chat: routing
                          envelope (Message) around a sealed body the relay NEVER decrypts,
                          outbox drain (atomic rename) + inbox append (id dedup) + injection-

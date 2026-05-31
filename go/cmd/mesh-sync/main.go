@@ -38,6 +38,7 @@ import (
 	"evolia/egress"
 	"evolia/mesh"
 	"evolia/paths"
+	"evolia/peerhealth"
 	"evolia/pow"
 )
 
@@ -73,6 +74,11 @@ func main() {
 	// or batter a receiver. Independent of the defense Gate (which throttles
 	// hostile ingress) — egress shaping is preventive, not reactive.
 	egressLimit := egress.NewLimiter(time.Now)
+	// Peer-health tracker: a dead peer (DNS error, network unreachable, write
+	// failure) is skipped during an exponential backoff window (5s → 5min cap)
+	// instead of consuming cycle budget every tick. A single success re-warms
+	// it instantly. Send-side signal only — receive-side correlation is Phase 3.
+	health := peerhealth.NewTracker(time.Now)
 	cycle := cycleInterval()
 
 	logf := newLogger(paths.MeshSyncLog())
@@ -81,7 +87,7 @@ func main() {
 
 	seen := map[string]bool{}
 	var mu sync.Mutex
-	var attacks, received, throttled, egressThrottled atomic.Uint64
+	var attacks, received, throttled, egressThrottled, coldSkipped atomic.Uint64
 
 	// Receive blocks propagated by peers and store them in the vault.
 	go listenBlocks(vault, seen, &mu, key, def, gate, &attacks, &received, &throttled, logf)
@@ -99,6 +105,7 @@ func main() {
 	prevReceived := received.Load()
 	prevThrottled := throttled.Load()
 	prevEgressThrottled := egressThrottled.Load()
+	prevColdSkipped := coldSkipped.Load()
 	for {
 		// Peers come from EVOLIA_PEERS plus whatever evolia-net has discovered.
 		peers := dedupe(append(parsePeers(os.Getenv("EVOLIA_PEERS")), mesh.LoadPeers()...))
@@ -107,7 +114,7 @@ func main() {
 		// Emit this node's current value each cycle (signed, with its cognitive
 		// proof-of-work and params attached).
 		localV, localWork := readLocalBlock()
-		sendBlock(self, localV, localWork, params, peers, key, egressLimit, &egressThrottled, logf)
+		sendBlock(self, localV, localWork, params, peers, key, egressLimit, health, &egressThrottled, &coldSkipped, logf)
 
 		// Relay any externally-dropped vault block once (received UDP blocks are
 		// marked seen, so they are never re-propagated — no amplification).
@@ -118,11 +125,11 @@ func main() {
 			logf("scan error: " + err.Error())
 		}
 		for _, b := range blocks {
-			sendBlock(b.Device, b.VValue, b.Work, params, peers, key, egressLimit, &egressThrottled, logf)
+			sendBlock(b.Device, b.VValue, b.Work, params, peers, key, egressLimit, health, &egressThrottled, &coldSkipped, logf)
 		}
 
 		// Carry any queued chat envelopes to peers (opaque; never decrypted).
-		relayChat(paths.ChatOutbox(), peers, egressLimit, &egressThrottled, logf)
+		relayChat(paths.ChatOutbox(), peers, egressLimit, health, &egressThrottled, &coldSkipped, logf)
 		time.Sleep(cycle)
 
 		// Couple the three live flows into the a_global net intensity, with the
@@ -134,12 +141,15 @@ func main() {
 		curReceived := received.Load()
 		curThrottled := throttled.Load()
 		curEgressThrottled := egressThrottled.Load()
+		curColdSkipped := coldSkipped.Load()
 		aEvo := float64(curAttacks - prevAttacks)
 		pFree := 0.1 * float64(curReceived-prevReceived)
-		if curAttacks != prevAttacks || curThrottled != prevThrottled || curEgressThrottled != prevEgressThrottled {
-			logf(fmt.Sprintf("intensity net=%.2f a_evo=%.1f p_free=%.2f d_evo=%.2f throttled=%d egress_throttled=%d",
+		coldNow := health.ColdCount()
+		if curAttacks != prevAttacks || curThrottled != prevThrottled || curEgressThrottled != prevEgressThrottled || curColdSkipped != prevColdSkipped || coldNow > 0 {
+			logf(fmt.Sprintf("intensity net=%.2f a_evo=%.1f p_free=%.2f d_evo=%.2f throttled=%d egress_throttled=%d cold_peers=%d cold_skipped=%d",
 				defense.NetIntensity(aEvo, pFree, def.Level()), aEvo, pFree, def.Level(),
-				curThrottled-prevThrottled, curEgressThrottled-prevEgressThrottled))
+				curThrottled-prevThrottled, curEgressThrottled-prevEgressThrottled,
+				coldNow, curColdSkipped-prevColdSkipped))
 		}
 
 		// On a quiet cycle (no hostile datagram since the last one) relax the
@@ -150,6 +160,7 @@ func main() {
 		prevAttacks = curAttacks
 		prevReceived = curReceived
 		prevEgressThrottled = curEgressThrottled
+		prevColdSkipped = curColdSkipped
 		prevThrottled = curThrottled
 	}
 }
@@ -269,7 +280,8 @@ func listenChat(inboxPath string, seen map[string]bool, fpPath string, gate *def
 // The egress limiter caps the per-peer-host send rate so a multi-message blast
 // across many peers cannot saturate the radio — Phase-2 fan-out reaches the
 // addressee via at least one un-throttled peer (the receiver dedups by id).
-func relayChat(outboxPath string, peers []string, egressLimit *egress.Limiter, egressThrottled *atomic.Uint64, logf func(string)) {
+// Cold peers (in a peer-health backoff window) are skipped without a dial.
+func relayChat(outboxPath string, peers []string, egressLimit *egress.Limiter, health *peerhealth.Tracker, egressThrottled, coldSkipped *atomic.Uint64, logf func(string)) {
 	if len(peers) == 0 {
 		return
 	}
@@ -281,7 +293,7 @@ func relayChat(outboxPath string, peers []string, egressLimit *egress.Limiter, e
 	for _, m := range msgs {
 		data := m.Wire()
 		for _, peer := range peers {
-			sendChat(chatPeerAddr(peer), data, egressLimit, egressThrottled, logf)
+			sendChat(chatPeerAddr(peer), data, egressLimit, health, egressThrottled, coldSkipped, logf)
 		}
 	}
 }
@@ -296,22 +308,30 @@ func chatPeerAddr(peer string) string {
 	return net.JoinHostPort(host, chatPort)
 }
 
-func sendChat(addr string, data []byte, egressLimit *egress.Limiter, egressThrottled *atomic.Uint64, logf func(string)) {
-	if !egressLimit.Allow(peerHost(addr)) {
+func sendChat(addr string, data []byte, egressLimit *egress.Limiter, health *peerhealth.Tracker, egressThrottled, coldSkipped *atomic.Uint64, logf func(string)) {
+	host := peerHost(addr)
+	if !health.MaySend(host) {
+		coldSkipped.Add(1)
+		return // cold peer in backoff window — skip silently, no dial
+	}
+	if !egressLimit.Allow(host) {
 		egressThrottled.Add(1)
 		logf("chat egress throttled -> " + addr)
 		return
 	}
 	conn, err := net.DialTimeout("udp", addr, time.Second)
 	if err != nil {
-		logf("chat dial " + addr + " failed: " + err.Error())
+		health.RecordFailure(host)
+		logf(fmt.Sprintf("chat dial %s failed: %s (consec=%d)", addr, err.Error(), health.ConsecutiveFailures(host)))
 		return
 	}
 	defer conn.Close()
 	_ = conn.SetWriteDeadline(time.Now().Add(time.Second))
 	if _, err := conn.Write(data); err != nil {
-		logf("chat send " + addr + " failed: " + err.Error())
+		health.RecordFailure(host)
+		logf(fmt.Sprintf("chat send %s failed: %s (consec=%d)", addr, err.Error(), health.ConsecutiveFailures(host)))
 	} else {
+		health.RecordSuccess(host)
 		logf("chat sent -> " + addr)
 	}
 }
@@ -326,7 +346,7 @@ func peerHost(addr string) string {
 	return addr
 }
 
-func sendBlock(device string, vValue float64, work *pow.WorkProof, params map[string]float64, peers []string, key []byte, egressLimit *egress.Limiter, egressThrottled *atomic.Uint64, logf func(string)) {
+func sendBlock(device string, vValue float64, work *pow.WorkProof, params map[string]float64, peers []string, key []byte, egressLimit *egress.Limiter, health *peerhealth.Tracker, egressThrottled, coldSkipped *atomic.Uint64, logf func(string)) {
 	if len(peers) == 0 {
 		logf(fmt.Sprintf("local block device=%s v=%.4f (no peers)", device, vValue))
 		return
@@ -348,20 +368,28 @@ func sendBlock(device string, vValue float64, work *pow.WorkProof, params map[st
 		if !strings.Contains(addr, ":") {
 			addr += ":5555"
 		}
-		if !egressLimit.Allow(peerHost(addr)) {
+		host := peerHost(addr)
+		if !health.MaySend(host) {
+			coldSkipped.Add(1)
+			continue // cold peer in backoff window — skip silently, no dial
+		}
+		if !egressLimit.Allow(host) {
 			egressThrottled.Add(1)
 			logf("egress throttled " + addr + " (burst protection)")
 			continue
 		}
 		conn, err := net.DialTimeout("udp", addr, time.Second)
 		if err != nil {
-			logf("dial " + addr + " failed: " + err.Error())
+			health.RecordFailure(host)
+			logf(fmt.Sprintf("dial %s failed: %s (consec=%d)", addr, err.Error(), health.ConsecutiveFailures(host)))
 			continue
 		}
 		_ = conn.SetWriteDeadline(time.Now().Add(time.Second))
 		if _, err := conn.Write(data); err != nil {
-			logf("send " + addr + " failed: " + err.Error())
+			health.RecordFailure(host)
+			logf(fmt.Sprintf("send %s failed: %s (consec=%d)", addr, err.Error(), health.ConsecutiveFailures(host)))
 		} else {
+			health.RecordSuccess(host)
 			logf(fmt.Sprintf("sent device=%s -> %s", device, addr))
 		}
 		conn.Close()
