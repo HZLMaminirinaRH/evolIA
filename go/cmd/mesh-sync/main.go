@@ -205,7 +205,7 @@ func listenBlocks(vault string, seen map[string]bool, mu *sync.Mutex, key []byte
 		}
 		if !gate.Allow(src.IP.String()) {
 			throttled.Add(1)
-			stats.IncDefenseThrottled()
+			stats.Record(meshstats.DefenseThrottled)
 			continue
 		}
 		mu.Lock()
@@ -218,7 +218,7 @@ func listenBlocks(vault string, seen map[string]bool, mu *sync.Mutex, key []byte
 		switch {
 		case storeErr == nil:
 			received.Add(1)
-			stats.IncBlockReceived()
+			stats.Record(meshstats.BlockReceived)
 			bridge.FuseIncoming(params)
 			logf("received " + name + " from " + src.IP.String())
 		case errors.Is(storeErr, mesh.ErrStale):
@@ -226,19 +226,19 @@ func listenBlocks(vault string, seen map[string]bool, mu *sync.Mutex, key []byte
 			// not an attack; drop it silently.
 		case errors.Is(storeErr, mesh.ErrInjection):
 			attacks.Add(1)
-			stats.IncBlockAttack("injection")
+			stats.RecordAttack(meshstats.BlockFlow, meshstats.Injection)
 			logf(fmt.Sprintf("injection from %s rejected (defense=%.2f)", src.IP.String(), def.Record(defense.SQLInjection)))
 		case errors.Is(storeErr, mesh.ErrForgedWork):
 			attacks.Add(1)
-			stats.IncBlockAttack("forged_work")
+			stats.RecordAttack(meshstats.BlockFlow, meshstats.ForgedWork)
 			logf(fmt.Sprintf("forged work from %s rejected (defense=%.2f)", src.IP.String(), def.Record(defense.ForgedWork)))
 		case errors.Is(storeErr, mesh.ErrBadSignature):
 			attacks.Add(1)
-			stats.IncBlockAttack("bad_signature")
+			stats.RecordAttack(meshstats.BlockFlow, meshstats.BadSignature)
 			logf(fmt.Sprintf("bad signature from %s rejected (defense=%.2f)", src.IP.String(), def.Record(defense.BadSignature)))
 		default:
 			attacks.Add(1)
-			stats.IncBlockAttack("malformed")
+			stats.RecordAttack(meshstats.BlockFlow, meshstats.Malformed)
 			logf(fmt.Sprintf("malformed from %s rejected (defense=%.2f)", src.IP.String(), def.Record(defense.Malformed)))
 		}
 	}
@@ -269,17 +269,17 @@ func listenChat(inboxPath string, seen map[string]bool, fpPath string, gate *def
 			continue
 		}
 		if !gate.Allow(src.IP.String()) {
-			stats.IncDefenseThrottled()
+			stats.Record(meshstats.DefenseThrottled)
 			continue
 		}
 		m, perr := chat.ParseIncoming(buf[:n])
 		if perr != nil {
 			attacks.Add(1)
 			if errors.Is(perr, chat.ErrInjection) {
-				stats.IncChatAttack("injection")
+				stats.RecordAttack(meshstats.ChatFlow, meshstats.Injection)
 				logf(fmt.Sprintf("chat injection from %s rejected (defense=%.2f)", src.IP.String(), def.Record(defense.SQLInjection)))
 			} else {
-				stats.IncChatAttack("malformed")
+				stats.RecordAttack(meshstats.ChatFlow, meshstats.Malformed)
 				logf(fmt.Sprintf("chat malformed from %s rejected (defense=%.2f)", src.IP.String(), def.Record(defense.Malformed)))
 			}
 			continue
@@ -290,7 +290,7 @@ func listenChat(inboxPath string, seen map[string]bool, fpPath string, gate *def
 		if stored, err := chat.AppendInbox(inboxPath, m, seen); err != nil {
 			logf("chat inbox write error: " + err.Error())
 		} else if stored {
-			stats.IncChatReceived()
+			stats.Record(meshstats.ChatReceived)
 			logf("chat received id=" + m.ID + " from " + src.IP.String())
 		}
 	}
@@ -335,19 +335,19 @@ func sendChat(addr string, data []byte, egressLimit *egress.Limiter, health *pee
 	host := peerHost(addr)
 	if !health.MaySend(host) {
 		coldSkipped.Add(1)
-		stats.IncColdSkipped()
+		stats.Record(meshstats.ColdSkipped)
 		return // cold peer in backoff window — skip silently, no dial
 	}
 	if !egressLimit.Allow(host) {
 		egressThrottled.Add(1)
-		stats.IncEgressThrottled()
+		stats.Record(meshstats.EgressThrottled)
 		logf("chat egress throttled -> " + addr)
 		return
 	}
 	conn, err := net.DialTimeout("udp", addr, time.Second)
 	if err != nil {
 		health.RecordFailure(host)
-		stats.IncSendFail()
+		stats.Record(meshstats.SendFail)
 		logf(fmt.Sprintf("chat dial %s failed: %s (consec=%d)", addr, err.Error(), health.ConsecutiveFailures(host)))
 		return
 	}
@@ -355,11 +355,11 @@ func sendChat(addr string, data []byte, egressLimit *egress.Limiter, health *pee
 	_ = conn.SetWriteDeadline(time.Now().Add(time.Second))
 	if _, err := conn.Write(data); err != nil {
 		health.RecordFailure(host)
-		stats.IncSendFail()
+		stats.Record(meshstats.SendFail)
 		logf(fmt.Sprintf("chat send %s failed: %s (consec=%d)", addr, err.Error(), health.ConsecutiveFailures(host)))
 	} else {
 		health.RecordSuccess(host)
-		stats.IncSendOK()
+		stats.Record(meshstats.SendOK)
 		logf("chat sent -> " + addr)
 	}
 }
@@ -399,30 +399,30 @@ func sendBlock(device string, vValue float64, work *pow.WorkProof, params map[st
 		host := peerHost(addr)
 		if !health.MaySend(host) {
 			coldSkipped.Add(1)
-			stats.IncColdSkipped()
+			stats.Record(meshstats.ColdSkipped)
 			continue // cold peer in backoff window — skip silently, no dial
 		}
 		if !egressLimit.Allow(host) {
 			egressThrottled.Add(1)
-			stats.IncEgressThrottled()
+			stats.Record(meshstats.EgressThrottled)
 			logf("egress throttled " + addr + " (burst protection)")
 			continue
 		}
 		conn, err := net.DialTimeout("udp", addr, time.Second)
 		if err != nil {
 			health.RecordFailure(host)
-			stats.IncSendFail()
+			stats.Record(meshstats.SendFail)
 			logf(fmt.Sprintf("dial %s failed: %s (consec=%d)", addr, err.Error(), health.ConsecutiveFailures(host)))
 			continue
 		}
 		_ = conn.SetWriteDeadline(time.Now().Add(time.Second))
 		if _, err := conn.Write(data); err != nil {
 			health.RecordFailure(host)
-			stats.IncSendFail()
+			stats.Record(meshstats.SendFail)
 			logf(fmt.Sprintf("send %s failed: %s (consec=%d)", addr, err.Error(), health.ConsecutiveFailures(host)))
 		} else {
 			health.RecordSuccess(host)
-			stats.IncSendOK()
+			stats.Record(meshstats.SendOK)
 			logf(fmt.Sprintf("sent device=%s -> %s", device, addr))
 		}
 		conn.Close()

@@ -4,10 +4,10 @@
 // sends_ok, sends_fail, peers_cold, attacks_by_flow, throttle_events — so the
 // UI does not need any schema translation.
 //
-// Counters are atomic and safe to increment from any goroutine. PersistTo
-// takes a consistent snapshot under no lock (each counter is read once) and
-// atomically replaces the file, so a half-written stats file can never be
-// observed even if the writer is signal-9'd mid-call.
+// Counters are atomic and safe to mutate from any goroutine. PersistTo takes
+// a consistent snapshot (each counter read once) and atomically replaces the
+// file, so a half-written stats file can never be observed even if the writer
+// is signal-9'd mid-call.
 package meshstats
 
 import (
@@ -18,25 +18,58 @@ import (
 	"evolia/paths"
 )
 
-// Recorder owns the in-memory counters. NewRecorder allocates a zeroed
-// recorder; tests can compare snapshots to verify each increment lands on the
-// right counter.
-type Recorder struct {
-	// Sends.
-	sendsOK   atomic.Uint64
-	sendsFail atomic.Uint64
+// Event enumerates the discrete recordable events on the UDP transport. The
+// recorder dispatches to the right counter through one method (Record) instead
+// of one wrapper per counter — each wrapper would be an unconditional
+// increment that questions nothing and returns nothing, so the audit deletes
+// them in favour of a single switch that actually interrogates the input.
+type Event int
 
-	// Throttle events.
+const (
+	SendOK           Event = iota // outbound block or chat Write succeeded
+	SendFail                      // outbound Dial or Write error
+	EgressThrottled               // dropped by the egress limiter (self-DoS guard)
+	DefenseThrottled              // dropped by the defense Gate (under hostile pressure)
+	ColdSkipped                   // skipped by the peer-health backoff window
+	BlockReceived                 // a valid block landed in the vault
+	ChatReceived                  // a valid chat envelope landed in the inbox
+)
+
+// Flow identifies which intake an attack arrived through. Severity is recorded
+// in the defense buffer; flow + kind together let the UI show the per-channel
+// breakdown.
+type Flow int
+
+const (
+	BlockFlow Flow = iota
+	ChatFlow
+)
+
+// AttackKind enumerates the hostile-input classes the recorder routes into a
+// per-flow counter. Chat has no signature and no PoW, so BadSignature and
+// ForgedWork are silently ignored under ChatFlow (a defensive shape, not a
+// caller error).
+type AttackKind int
+
+const (
+	Injection AttackKind = iota
+	BadSignature
+	ForgedWork
+	Malformed
+)
+
+// Recorder owns the in-memory counters. NewRecorder allocates a zeroed
+// recorder; tests compare snapshots to verify each Record/RecordAttack call
+// lands on the right counter.
+type Recorder struct {
+	sendsOK          atomic.Uint64
+	sendsFail        atomic.Uint64
 	egressThrottled  atomic.Uint64
 	defenseThrottled atomic.Uint64
 	coldSkipped      atomic.Uint64
+	blocksReceived   atomic.Uint64
+	chatReceived     atomic.Uint64
 
-	// Receives (valid intake).
-	blocksReceived atomic.Uint64
-	chatReceived   atomic.Uint64
-
-	// Attacks by flow + kind (severity feeds the defense buffer; counts are
-	// for diagnostics so the UI can say "3 injections, 1 forged work").
 	blockInjection    atomic.Uint64
 	blockBadSignature atomic.Uint64
 	blockForgedWork   atomic.Uint64
@@ -45,63 +78,62 @@ type Recorder struct {
 	chatMalformed     atomic.Uint64
 }
 
-// NewRecorder builds a recorder with all counters at zero.
+// NewRecorder builds a recorder with every counter at zero.
 func NewRecorder() *Recorder { return &Recorder{} }
 
-// IncSendOK records one successful outbound Write (block or chat).
-func (r *Recorder) IncSendOK() { r.sendsOK.Add(1) }
-
-// IncSendFail records one outbound Dial or Write error — the same event that
-// arms the peer-health backoff.
-func (r *Recorder) IncSendFail() { r.sendsFail.Add(1) }
-
-// IncEgressThrottled records one outbound drop by the egress rate limiter
-// (self-DoS guard). Not an attack — preventive shaping.
-func (r *Recorder) IncEgressThrottled() { r.egressThrottled.Add(1) }
-
-// IncDefenseThrottled records one inbound drop by the defense Gate (under
-// hostile pressure). Distinct from the egress throttle: this is reactive.
-func (r *Recorder) IncDefenseThrottled() { r.defenseThrottled.Add(1) }
-
-// IncColdSkipped records one peer-health backoff skip (no dial attempted).
-func (r *Recorder) IncColdSkipped() { r.coldSkipped.Add(1) }
-
-// IncBlockReceived records one valid block stored in the vault.
-func (r *Recorder) IncBlockReceived() { r.blocksReceived.Add(1) }
-
-// IncChatReceived records one valid chat envelope appended to the inbox.
-func (r *Recorder) IncChatReceived() { r.chatReceived.Add(1) }
-
-// IncBlockAttack records a hostile block intake of the given kind. Unknown
-// kinds are ignored so a new attack kind added upstream does not panic the
-// recorder; they still show in the defense log.
-func (r *Recorder) IncBlockAttack(kind string) {
-	switch kind {
-	case "injection":
-		r.blockInjection.Add(1)
-	case "bad_signature":
-		r.blockBadSignature.Add(1)
-	case "forged_work":
-		r.blockForgedWork.Add(1)
-	case "malformed":
-		r.blockMalformed.Add(1)
+// Record routes one event to its counter. Unknown event values (a constant
+// added upstream the recorder has not learned about yet) are silently
+// ignored, so a new event class cannot crash the recorder.
+func (r *Recorder) Record(event Event) {
+	switch event {
+	case SendOK:
+		r.sendsOK.Add(1)
+	case SendFail:
+		r.sendsFail.Add(1)
+	case EgressThrottled:
+		r.egressThrottled.Add(1)
+	case DefenseThrottled:
+		r.defenseThrottled.Add(1)
+	case ColdSkipped:
+		r.coldSkipped.Add(1)
+	case BlockReceived:
+		r.blocksReceived.Add(1)
+	case ChatReceived:
+		r.chatReceived.Add(1)
 	}
 }
 
-// IncChatAttack records a hostile chat intake. Chat has fewer kinds (no
-// signature, no PoW) — only injection and malformed.
-func (r *Recorder) IncChatAttack(kind string) {
-	switch kind {
-	case "injection":
-		r.chatInjection.Add(1)
-	case "malformed":
-		r.chatMalformed.Add(1)
+// RecordAttack routes one hostile-input event to its (flow, kind) counter.
+// (ChatFlow, BadSignature) and (ChatFlow, ForgedWork) are deliberately dropped
+// because chat envelopes carry neither signature nor PoW — the caller cannot
+// legitimately produce those combinations.
+func (r *Recorder) RecordAttack(flow Flow, kind AttackKind) {
+	switch flow {
+	case BlockFlow:
+		switch kind {
+		case Injection:
+			r.blockInjection.Add(1)
+		case BadSignature:
+			r.blockBadSignature.Add(1)
+		case ForgedWork:
+			r.blockForgedWork.Add(1)
+		case Malformed:
+			r.blockMalformed.Add(1)
+		}
+	case ChatFlow:
+		switch kind {
+		case Injection:
+			r.chatInjection.Add(1)
+		case Malformed:
+			r.chatMalformed.Add(1)
+		}
 	}
 }
 
-// Snapshot is the JSON shape persisted to disk. The field names match the
-// counters the user asked for (sends_ok, sends_fail, peers_cold, attacks_by_flow,
-// throttle_events) so the Android UI consumes the file without any mapping.
+// Snapshot is the JSON shape persisted to disk. Field names match the
+// counters the user asked for (sends_ok, sends_fail, peers_cold,
+// attacks_by_flow, throttle_events) so the Android UI consumes the file
+// with no mapping.
 type Snapshot struct {
 	UpdatedAt      string         `json:"updated_at"`
 	SendsOK        uint64         `json:"sends_ok"`
@@ -114,24 +146,21 @@ type Snapshot struct {
 	DefenseLevel   float64        `json:"defense_level"`
 }
 
-// ThrottleCounts groups the three throttle reasons so the UI can show why a
-// send did not go out (egress shaping, defense gate, or cold-peer skip).
+// ThrottleCounts groups the three throttle reasons so the UI shows WHY a send
+// did not go out (egress shaping, defense gate, or cold-peer skip).
 type ThrottleCounts struct {
 	Egress         uint64 `json:"egress"`
 	IngressDefense uint64 `json:"ingress_defense"`
 	ColdSkipped    uint64 `json:"cold_skipped"`
 }
 
-// AttacksByFlow is the per-flow attack breakdown. Each leaf is a count;
-// severity is intentionally not exposed (it's encoded in the defense buffer
-// level, also persisted in the snapshot).
+// AttacksByFlow is the per-flow attack breakdown.
 type AttacksByFlow struct {
 	Blocks BlockAttackKinds `json:"blocks"`
 	Chat   ChatAttackKinds  `json:"chat"`
 }
 
-// BlockAttackKinds enumerates the attack kinds the block intake classifies.
-// Anything else (currently nothing) would be silently dropped by IncBlockAttack.
+// BlockAttackKinds enumerates the kinds the block intake classifies.
 type BlockAttackKinds struct {
 	Injection    uint64 `json:"injection"`
 	BadSignature uint64 `json:"bad_signature"`
@@ -139,8 +168,8 @@ type BlockAttackKinds struct {
 	Malformed    uint64 `json:"malformed"`
 }
 
-// ChatAttackKinds enumerates the attack kinds the chat intake classifies.
-// Chat envelopes have no signature and no PoW, hence the smaller surface.
+// ChatAttackKinds enumerates the kinds the chat intake classifies (no
+// signature, no PoW on chat).
 type ChatAttackKinds struct {
 	Injection uint64 `json:"injection"`
 	Malformed uint64 `json:"malformed"`
@@ -188,7 +217,7 @@ func (r *Recorder) Snapshot(peersCold, peersKnown int, defenseLevel float64) Sna
 }
 
 // PersistTo writes a snapshot to path atomically (temp file + fsync + rename,
-// via paths.WriteFileAtomic). A half-written stats file is impossible — the
+// via paths.WriteFileAtomic). A half-written stats file is impossible — a
 // reader sees either the previous version or the new one.
 func (r *Recorder) PersistTo(path string, peersCold, peersKnown int, defenseLevel float64) error {
 	data, err := json.MarshalIndent(r.Snapshot(peersCold, peersKnown, defenseLevel), "", "  ")
