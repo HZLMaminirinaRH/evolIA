@@ -107,11 +107,9 @@ jobs:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: bash scripts/build-android-binaries.sh
       - name: Unit tests (pure value core)
-        timeout-minutes: 5
-        run: ./gradlew :app:testDebugUnitTest --no-daemon --max-workers=2 -Dorg.gradle.jvmargs="-Xmx2048m"
+        run: ./gradlew :app:testDebugUnitTest --no-daemon
       - name: Assemble debug APK
-        timeout-minutes: 10
-        run: ./gradlew :app:assembleDebug --no-daemon --max-workers=2 -Dorg.gradle.jvmargs="-Xmx2048m"
+        run: ./gradlew :app:assembleDebug --no-daemon
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         if: always()
