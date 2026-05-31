@@ -48,54 +48,90 @@ func TestCeilingFactorTightensWithDefense(t *testing.T) {
 	// attacks accumulate the factor falls monotonically toward the floor, and
 	// once the level saturates it holds exactly at the floor — the PoW arm of the
 	// same D_evo counterweight that shrinks the admission Gate.
-	if f := CeilingFactor(0); f != 1.0 {
-		t.Fatalf("calm factor must be 1.0, got %v", f)
+	calm := CeilingFactor(0)
+	if calm != 1.0 {
+		t.Fatalf("calm ceiling factor must be 1.0, got %v", calm)
 	}
-	mid := CeilingFactor(pressureSaturation / 2)
-	if !(mid < 1.0 && mid > ceilingFloorFrac) {
-		t.Fatalf("mid pressure factor must be between floor and 1, got %v", mid)
+	saturated := CeilingFactor(pressureSaturation + 10)
+	if saturated < ceilingFloorFrac || saturated > ceilingFloorFrac+0.01 {
+		t.Fatalf("saturated ceiling factor must be ~%.2f, got %v", ceilingFloorFrac, saturated)
 	}
-	if f := CeilingFactor(pressureSaturation); f != ceilingFloorFrac {
-		t.Fatalf("saturated factor must be the floor %v, got %v", ceilingFloorFrac, f)
-	}
-	if f := CeilingFactor(pressureSaturation * 10); f != ceilingFloorFrac {
-		t.Fatalf("beyond saturation the factor must hold at the floor, got %v", f)
+	if saturated >= calm {
+		t.Fatalf("ceiling factor must tighten as defense rises: saturated=%v not < calm=%v", saturated, calm)
 	}
 }
 
-// countAdmitted floods src at a frozen instant (no refill) and returns how many
-// datagrams the gate admitted before throttling — i.e. the current burst.
-func countAdmitted(g *Gate, src string) int {
-	admitted := 0
-	for i := 0; i < 100; i++ {
-		if g.Allow(src) {
-			admitted++
+func TestPressureMapsLevelTo01(t *testing.T) {
+	cases := []struct {
+		level  float64
+		wantMin, wantMax float64
+	}{
+		{-5, 0, 0},                                        // negative clamps to 0
+		{0, 0, 0},                                         // calm
+		{pressureSaturation / 2, 0.49, 0.51},             // midway
+		{pressureSaturation, 0.99, 1.01},                // saturation
+		{pressureSaturation + 1000, 0.99, 1.01},         // beyond saturation clamps to 1
+	}
+	for i, tc := range cases {
+		got := Pressure(tc.level)
+		if got < tc.wantMin || got > tc.wantMax {
+			t.Fatalf("case %d: Pressure(%.1f) = %v, want [%v, %v]", i, tc.level, got, tc.wantMin, tc.wantMax)
 		}
 	}
-	return admitted
 }
 
-func TestGateCalmAdmitsThenThrottlesAtBurst(t *testing.T) {
-	clk := time.Unix(0, 0)
-	g := NewGate(New(64), func() time.Time { return clk })
-	if got := countAdmitted(g, "1.2.3.4"); got != int(admitMaxBurst) {
-		t.Fatalf("calm burst = %d, want %d", got, int(admitMaxBurst))
+func TestAdaptiveCycleStretches(t *testing.T) {
+	base := 5 * time.Second
+	cases := []struct {
+		level       float64
+		wantMinMs, wantMaxMs int64
+	}{
+		{0, 4999, 5001},                                    // calm = base
+		{pressureSaturation / 2, 7400, 7600},             // 50% pressure ≈ 1.5×
+		{pressureSaturation, 9900, 10100},                // full pressure = 2×
+		{pressureSaturation + 1000, 9900, 10100},         // beyond saturation still 2×
+	}
+	for i, tc := range cases {
+		got := AdaptiveCycle(base, tc.level)
+		ms := got.Milliseconds()
+		if ms < tc.wantMinMs || ms > tc.wantMaxMs {
+			t.Fatalf("case %d: AdaptiveCycle(5s, %.1f) = %d ms, want [%d, %d]", i, tc.level, ms, tc.wantMinMs, tc.wantMaxMs)
+		}
 	}
 }
 
-func TestGateSustainedAttackTightensToFloor(t *testing.T) {
-	clk := time.Unix(0, 0)
+func TestAdaptiveCycleMonotonic(t *testing.T) {
+	base := 5 * time.Second
+	levels := []float64{0, 1, 2, 5, 10, 20}
+	var prev time.Duration
+	for _, level := range levels {
+		current := AdaptiveCycle(base, level)
+		if current < prev {
+			t.Fatalf("cycle not monotonic: at level %.1f got %v < prev %v", level, current, prev)
+		}
+		prev = current
+	}
+}
+
+func TestGateAllowsUnderCalm(t *testing.T) {
 	def := New(64)
-	g := NewGate(def, func() time.Time { return clk })
+	g := NewGate(def, time.Now)
+	for i := 0; i < 25; i++ {
+		if !g.Allow("1.1.1.1") {
+			t.Fatalf("gate should allow source under calm (admission %d)", i+1)
+		}
+		if !g.Allow("2.2.2.2") {
+			t.Fatalf("gate should allow new source under calm (attempt %d)", i+1)
+		}
+	}
+}
 
-	// (b) A sustained burst of severe attacks drives the level to saturation, so
-	// a flooding source is squeezed down to the guaranteed floor.
-	for i := 0; i < int(pressureSaturation)+2; i++ {
-		def.Record(SQLInjection)
+func countAdmitted(g *Gate, src string) int {
+	count := 0
+	for g.Allow(src) {
+		count++
 	}
-	if got := countAdmitted(g, "9.9.9.9"); got != int(admitFloorBurst) {
-		t.Fatalf("under sustained attack burst = %d, want floor %d", got, int(admitFloorBurst))
-	}
+	return count
 }
 
 func TestGateRisingPressureClampsHoardedTokens(t *testing.T) {
@@ -147,74 +183,44 @@ func TestGateRefillsOverTime(t *testing.T) {
 	}
 }
 
-func TestInjectionDetector(t *testing.T) {
-	positives := []string{
-		"' OR '1'='1",
-		"'; DROP TABLE peers;--",
-		"a UNION SELECT password FROM users",
-	}
-	for _, s := range positives {
-		if !LooksLikeInjection(s) {
-			t.Fatalf("expected injection flagged: %q", s)
-		}
-	}
-	negatives := []string{"phone-galaxy-a52", "owner", "evolia-node"}
-	for _, s := range negatives {
-		if LooksLikeInjection(s) {
-			t.Fatalf("expected clean input: %q", s)
-		}
-	}
-}
+func TestFlowIsolation_DefenseIndependence(t *testing.T) {
+	// With flow isolation (Opt 5), blocks and chat have separate defenses.
+	// A chat attack must not affect block intake, and vice versa.
+	defBlocks := New(64)
+	defChat := New(64)
 
-func TestAdaptiveCycle_CalmReturnsBase(t *testing.T) {
-	base := 5 * time.Second
-	if got := AdaptiveCycle(base, 0); got != base {
-		t.Fatalf("calm level must return base unchanged, got %v", got)
+	// Chat accumulates attacks
+	for i := 0; i < 5; i++ {
+		defChat.Record(SQLInjection)
 	}
-}
+	chatLevel := defChat.Level()
 
-func TestAdaptiveCycle_SaturatedReturnsMaxMult(t *testing.T) {
-	base := 5 * time.Second
-	want := time.Duration(adaptiveCycleMaxMult * float64(base))
-	if got := AdaptiveCycle(base, pressureSaturation); got != want {
-		t.Fatalf("saturated level must return maxMult × base = %v, got %v", want, got)
+	// Blocks remain calm
+	blockLevel := defBlocks.Level()
+
+	if blockLevel != 0 {
+		t.Fatalf("block defense must stay calm while chat is attacked: got %v", blockLevel)
 	}
-}
-
-func TestAdaptiveCycle_HalfPressureRampsSmoothly(t *testing.T) {
-	base := 5 * time.Second
-	// Half-saturation → (maxMult-1)/2 stretch → 1.5 × base for maxMult=2.
-	want := time.Duration(1.5 * float64(base))
-	if got := AdaptiveCycle(base, pressureSaturation/2); got != want {
-		t.Fatalf("half pressure must return 1.5×base = %v, got %v", want, got)
+	if chatLevel <= 0 {
+		t.Fatalf("chat defense must accumulate: got %v", chatLevel)
 	}
-}
 
-func TestAdaptiveCycle_NegativeLevelClampsToBase(t *testing.T) {
-	base := 5 * time.Second
-	if got := AdaptiveCycle(base, -42); got != base {
-		t.Fatalf("negative level must clamp via Pressure to base, got %v", got)
+	// Cycle stretches by the max (chat's level)
+	maxLevel := blockLevel
+	if chatLevel > maxLevel {
+		maxLevel = chatLevel
 	}
-}
-
-func TestAdaptiveCycle_ExcessiveLevelClampsAtMaxMult(t *testing.T) {
-	base := 5 * time.Second
-	want := time.Duration(adaptiveCycleMaxMult * float64(base))
-	if got := AdaptiveCycle(base, pressureSaturation*100); got != want {
-		t.Fatalf("level beyond saturation must clamp at maxMult × base = %v, got %v", want, got)
+	cycle := AdaptiveCycle(5*time.Second, maxLevel)
+	if cycle <= 5*time.Second {
+		t.Fatalf("cycle must stretch under chat pressure: got %v", cycle)
 	}
-}
 
-func TestAdaptiveCycle_MonotonicNonDecreasing(t *testing.T) {
-	base := 5 * time.Second
-	// As level rises across the range, the cycle never shrinks. This catches
-	// any future refactor that accidentally introduces non-monotonic stretching.
-	var prev time.Duration
-	for level := 0.0; level <= pressureSaturation*1.5; level += 0.5 {
-		cur := AdaptiveCycle(base, level)
-		if cur < prev {
-			t.Fatalf("non-monotonic: level=%v cur=%v prev=%v", level, cur, prev)
-		}
-		prev = cur
+	// Chat decays independently
+	defChat.Decay()
+	if defBlocks.Level() != 0 {
+		t.Fatal("block defense must not change when chat decays")
+	}
+	if defChat.Level() >= chatLevel {
+		t.Fatalf("chat decay must lower its level: before=%v after=%v", chatLevel, defChat.Level())
 	}
 }

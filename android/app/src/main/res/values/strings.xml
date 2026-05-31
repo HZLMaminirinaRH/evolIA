@@ -48,55 +48,17 @@
     <string name="chat_contact_bundle">Public key (bundle)</string>
     <string name="chat_contact_added">Contact added.</string>
     <string name="chat_contact_invalid">Name and bundle are both required.</string>
-    <string name="chat_contact_invalid_bundle">Invalid bundle — paste the exact 128-character public key shared by your peer.</string>
-    <string name="chat_message_hint">Message…</string>
-    <string name="chat_send">Send</string>
-    <string name="chat_no_contact">Pick a contact first.</string>
-    <string name="chat_no_contacts">(no contacts)</string>
-    <string name="chat_send_failed">Invalid key — send failed.</string>
-    <string name="chat_send_failed_some">Send failed for: %s</string>
-    <string name="chat_recipients_none">Recipients: (none — tap to pick)</string>
-    <string name="chat_recipients_label">Recipients: %s</string>
-    <string name="chat_recipients_pick">Choose recipients</string>
-    <string name="chat_contact_fingerprint_label">Fingerprint: %s</string>
-    <string name="chat_contact_fingerprint_pending">Fingerprint: (paste the recipient\'s public key above)</string>
-    <string name="chat_notif_title">New message in evolIA</string>
-    <string name="chat_notif_content">From %s — tap to open the chat</string>
-    <string name="chat_channel_messages">Chat messages</string>
-    <string name="chat_empty">No messages.</string>
-    <string name="chat_inactive">evolIA stopped — messaging inactive (messages are erased on stop).</string>
-    <string name="chat_me_prefix">me → %1$s: %2$s</string>
+    <string name="chat_no_contacts">No contacts yet.</string>
+    <string name="chat_contact_invalid_bundle">Invalid bundle format.</string>
 
-    <!-- Dashboard -->
-    <string name="dashboard_wallet">ETH wallet (fund with gas):</string>
-    <string name="dashboard_onchain_balance">On-chain BTC-e (transferable): %.2f</string>
-    <string name="dashboard_onchain_help">(*)</string>
-
-    <!-- On-chain BTC-e exchange -->
-    <string name="msg_auth_needed">Owner auth not configured yet — reopen evolIA and complete the PIN/password setup first.</string>
-    <string name="transfer_choice_title">How to transfer BTC-e?</string>
-    <string name="transfer_choice_message">Choose a transfer mode:\n\n• On-chain (recommended): secure, final, blockchain-settled, requires RPC\n• Local P2P (at-risk): peer promise, offline-friendly, no blockchain needed</string>
-    <string name="transfer_choice_onchain">On-chain (safe)</string>
-    <string name="transfer_choice_local">Local P2P (at-risk)</string>
-    <string name="transfer_title">Transfer BTC-e (on-chain)</string>
-    <string name="transfer_to_hint">Recipient address (0x…)</string>
-    <string name="transfer_amount_hint">Amount (BTC-e)</string>
-    <string name="transfer_invalid">Invalid address or amount.</string>
-    <string name="msg_transfer_sending">Sending on-chain transfer…</string>
-    <string name="msg_transfer_success">Sent %1$.2f BTC-e to %2$s</string>
-    <string name="msg_transfer_local">Not settled on-chain: %1$s</string>
-    <string name="msg_transfer_failed">Transfer failed: %1$s</string>
-    <string name="transfer_local_title">Local P2P transfer (peer promise)</string>
-    <string name="transfer_local_warning">This is an off-chain, non-binding transfer. You are making a peer promise to send BTC-e, but it is NOT blockchain-settled. The receiver must trust you. The mesh network can detect and contain malicious double-spends via adaptive defense, but this record is local only.\n\nProceed at your risk.</string>
-    <string name="transfer_local_record">Record local P2P transfer</string>
-    <string name="msg_transfer_local_recorded">Recorded local promise: %1$.2f BTC-e to %2$s. The mesh can verify claims if shared.</string>
-    <string name="msg_transfer_local_failed">Failed to record: %1$s</string>
-    <string name="transfer_local_no_contact">Add a chat contact first — an offline transfer is carried over the encrypted mesh to a known peer.</string>
-    <string name="transfer_channel_name">BTC-e transfers</string>
-    <string name="transfer_notif_sent_title">BTC-e sent (acknowledgment)</string>
-    <string name="transfer_notif_sent_onchain">On-chain: %1$.2f BTC-e sent to %2$s</string>
-    <string name="transfer_notif_sent_offline">Offline (peer promise): %1$.2f BTC-e sent to %2$s</string>
-    <string name="transfer_notif_recv_title">BTC-e received (acknowledgment)</string>
+    <!-- Transfer -->
+    <string name="transfer_title">Transfer BTC-e</string>
+    <string name="transfer_explain">Send BTC-e to another evolIA user. Transfers settle on-chain and are final.</string>
+    <string name="transfer_recipient">Recipient address (0x…)</string>
+    <string name="transfer_amount">Amount (BTC-e)</string>
+    <string name="transfer_error">Transfer failed.</string>
+    <string name="transfer_success">Transfer sent to the blockchain.</string>
+    <string name="transfer_pending">Settlement pending — the blockchain is processing your transfer.</string>
     <string name="transfer_notif_recv_onchain">On-chain: +%1$.2f BTC-e from %2$s</string>
     <string name="transfer_notif_recv_offline">Offline (peer promise): +%1$.2f BTC-e from %2$s</string>
     <string name="receive_preparing">Preparing your address…</string>
@@ -112,10 +74,10 @@
     <string name="chain_config_invalid_url">Invalid RPC URL — it must start with https:// or http:// and have a host.</string>
     <string name="chain_config_invalid_chainid">Invalid chain_id — it must be a positive whole number.</string>
     <string name="guide_title">On-chain exchange — a beginner\'s guide</string>
-    <string name="guide_body">Your BTC-e is the value evolIA builds from your activity. \"On-chain\" means a transfer is written on a blockchain — a shared, tamper-proof ledger — so it cannot be faked or spent twice. Exchanging on-chain needs three things, explained below: a connection to the blockchain (RPC), a tiny network fee (gas), and the recipient\'s address. New to crypto? Read on — each step is explained plainly.</string>
+    <string name="guide_body">Your BTC-e is the value evolIA builds from your activity. "On-chain" means a transfer is written on a blockchain — a shared, tamper-proof ledger — so it cannot be faked or spent twice. Exchanging on-chain needs three things, explained below: a connection to the blockchain (RPC), a tiny network fee (gas), and the recipient\'s address. New to crypto? Read on — each step is explained plainly.</string>
     <string name="guide_s1_title">1. What is an RPC, and how to set it</string>
-    <string name="guide_s1_body">A blockchain runs on many computers called nodes. An RPC is simply the web address (a URL) of one such node — the door the app knocks on to read balances and send transfers. You also give a chain_id, a number that identifies which network you\'re on. You obtain both OUTSIDE the app (a phone web browser, or a PC), then place them in evolIA\'s config. Here is how, step by step.\n\nOption A — a public test network (fastest, no account):\n1. In your phone\'s web browser, open chainlist.org.\n2. Turn on \"Testnets\" and search a test network (e.g. Sepolia).\n3. It lists ready-to-use RPC URLs and shows the chain_id (Sepolia = 11155111).\n4. Copy one RPC URL and the chain_id.\n\nOption B — a free RPC provider (steadier, free sign-up):\n1. In your browser, open a free provider (e.g. Alchemy, Infura, or Ankr).\n2. Create a free account (email + password), then a new app/project.\n3. Pick the network; you get an https:// RPC URL — copy it.\n4. The chain_id is the one of the network you picked (check chainlist.org if unsure).\n\nOption C — a local node among friends (no internet, full control):\n1. On a PC on the same Wi-Fi, run a free local node (e.g. Ganache).\n2. Your RPC URL is http:// + the PC\'s local IP + :8545 (e.g. http://192.168.1.20:8545).\n3. The chain_id is the node\'s id (Ganache\'s default is 1337).\n\nWhere evolIA reads them: the file evolia_chain_config.json holds rpc_url and chain_id, e.g. {\"rpc_url\": \"https://…\", \"chain_id\": 11155111}. On Termux it lives in your evolia folder. On Android, tap \"On-chain settings (RPC)\" and paste the RPC URL and chain_id there. If it\'s empty or missing, evolIA stays in LOCAL mode and nothing settles on-chain. Tip: start on a test network — it behaves exactly the same, with zero risk.</string>
-    <string name="guide_s2_title">2. What \"gas\" is, and how to fund it</string>
+    <string name="guide_s1_body">A blockchain runs on many computers called nodes. An RPC is simply the web address (a URL) of one such node — the door the app knocks on to read balances and send transfers. You also give a chain_id, a number that identifies which network you\'re on. You obtain both OUTSIDE the app (a phone web browser, or a PC), then place them in evolIA\'s config. Here is how, step by step.\n\nOption A — a public test network (fastest, no account):\n1. In your phone\'s web browser, open chainlist.org.\n2. Turn on "Testnets" and search a test network (e.g. Sepolia).\n3. It lists ready-to-use RPC URLs and shows the chain_id (Sepolia = 11155111).\n4. Copy one RPC URL and the chain_id.\n\nOption B — a free RPC provider (steadier, free sign-up):\n1. In your browser, open a free provider (e.g. Alchemy, Infura, or Ankr).\n2. Create a free account (email + password), then a new app/project.\n3. Pick the network; you get an https:// RPC URL — copy it.\n4. The chain_id is the one of the network you picked (check chainlist.org if unsure).\n\nOption C — a local node among friends (no internet, full control):\n1. On a PC on the same Wi-Fi, run a free local node (e.g. Ganache).\n2. Your RPC URL is http:// + the PC\'s local IP + :8545 (e.g. http://192.168.1.20:8545).\n3. The chain_id is the node\'s id (Ganache\'s default is 1337).\n\nWhere evolIA reads them: the file evolia_chain_config.json holds rpc_url and chain_id, e.g. {\"rpc_url\": \"https://…\", \"chain_id\": 11155111}. On Termux it lives in your evolia folder. On Android, tap \"On-chain settings (RPC)\" and paste the RPC URL and chain_id there. If it\'s empty or missing, evolIA stays in LOCAL mode and nothing settles on-chain. Tip: start on a test network — it behaves exactly the same, with zero risk.</string>
+    <string name="guide_s2_title">2. What "gas" is, and how to fund it</string>
     <string name="guide_s2_body">Every blockchain charges a small fee, called gas, to process a transaction. Gas is paid in the network\'s own coin (its \"native coin\"). You only ever need a tiny amount.\n\nTwo situations:\n• Test network (recommended to start): gas is free. Local accounts come pre-funded, or a free \"faucet\" hands you test coins. No bank, no card, no money.\n• Real public network: the native coin costs real money, so you buy a small amount and send it to your address (shown at the bottom of this page).\n\nHow to get the coin with real money: open an account on an exchange such as Binance or OKX, then top it up — in Madagascar this is commonly done with Mobile Money (MVola, Orange Money, Airtel Money) through the exchange\'s P2P market, or with a Visa/Mastercard card, or a bank transfer. Buy a small amount of the network\'s native coin, then withdraw it to your evolIA address. IMPORTANT: pick the matching network when withdrawing — sending on the wrong network loses the funds.</string>
     <string name="guide_s3_title">3. Sending, receiving, and using Binance / OKX</string>
     <string name="guide_s3_body">Good to know: BTC-e lives inside evolIA\'s contract and moves directly between evolIA users. It is NOT a coin listed on Binance or OKX — you cannot send BTC-e to an exchange. Exchanges are only used to obtain the gas coin that funds your address.\n\nTo send: ask the other person for their evolIA address (their Receive screen shows a 0x… address). Tap Transfer, paste the address and the amount, and confirm with your PIN/password. The blockchain settles it and it can never overspend.\n\nTo receive: tap Receive and share your 0x… address. When someone transfers to it, your balance updates on its own — receiving is automatic, nothing to do.\n\nIf you use Binance/OKX: that\'s where you withdraw the gas coin to your evolIA address (a standard 0x… address, on the matching network). The BTC-e exchange itself still happens between evolIA users, inside the app.</string>
@@ -133,8 +95,8 @@
     <string name="chat_open_wifi_settings">Wi-Fi settings</string>
     <string name="chat_diag_button">Diagnose transport</string>
     <string name="chat_diag_title">Peer-to-peer reach</string>
-    <string name="chat_diag_message">RADIO\n• Bluetooth: %1$s\n• BT permission: %2$s\n• Wi-Fi: %5$s\n\nPAIRED DEVICES (%3$d):\n%4$s\n\nSEND COUNTERS (since service start)\n• Frames sent: %6$d\n• Connect attempts: %7$d\n• Connect successes: %8$d\n\nRECEIVE COUNTERS (since service start)\n• Accepted connections: %9$d\n• Frames received: %10$d\n• Intake rejections: %11$d\n\nOUTBOX: %12$d message(s) pending\n\nHOW TO READ THIS:\n• If \"Connect attempts\" stays at 0, no peer was tried (no bonded device, or radio off).\n• If \"attempts > 0\" but \"successes = 0\", the paired device is not running evolIA (or you paired a car/headset, not the other phone).\n• If \"successes > 0\" but the receiver shows \"Frames received = 0\", the connection drops before any frame goes through (range issue).\n• If receiver shows \"Frames received &gt; 0\" but message not displayed, check fingerprint match (sender\'s contact fingerprint must equal receiver\'s identity).</string>
-    <string name="chat_diag_udp_section">\n\nWI-FI / UDP TRANSPORT (since service start)\n• Sends OK: %1$d\n• Sends failed: %2$d\n• Cold peers: %3$d / %4$d known\n• Throttle events:\n   - Egress (self-DoS guard): %5$d\n   - Ingress defense gate: %6$d\n   - Cold-peer skipped: %7$d\n• Receives: blocks=%8$d, chat=%9$d\n• Attacks (blocks): inj=%10$d, badsig=%11$d, forged=%12$d, malformed=%13$d\n• Attacks (chat): inj=%14$d, malformed=%15$d\n• Defense level: %16$.2f\n• Live cycle: %17$d ms (base %18$d ms — adaptive stretch under pressure, up to 2×)\n\nHOW TO READ THIS (UDP):\n• If \"Sends OK\" stays at 0, mesh-sync is not reaching any peer (binary not running, or no peer in evolia_peers.json).\n• If \"Sends OK &gt; 0\" but the receiver shows \"Receives chat = 0\", the datagrams arrive but the recipient fingerprint does not match yours (or the receiver\'s mesh-sync is silent).\n• \"Cold peers &gt; 0\" means N peers are in the exponential-backoff window (5s → 5 min) after repeated failures — they are not being dialled until the window expires.\n• Throttle events: \"Egress\" is self-shaping, \"Ingress defense\" is reactive to hostile pressure, \"Cold-peer skipped\" means peer-health saved a wasted Dial.\n• \"Live cycle &gt; base cycle\" means the loop is stretched because absorbed defense is non-zero — battery saving while under hostile pressure. Returns to base automatically as the buffer decays.</string>
+    <string name="chat_diag_message">RADIO\n• Bluetooth: %1$s\n• BT permission: %2$s\n• Wi-Fi: %5$s\n\nPAIRED DEVICES (%3$d):\n%4$s\n\nSEND COUNTERS (since service start)\n• Frames sent: %6$d\n• Connect attempts: %7$d\n• Connect successes: %8$d\n\nRECEIVE COUNTERS (since service start)\n• Accepted connections: %9$d\n• Frames received: %10$d\n• Intake rejections: %11$d\n\nOUTBOX: %12$d message(s) pending\n\nHOW TO READ THIS:\n• If "Connect attempts" stays at 0, no peer was tried (no bonded device, or radio off).\n• If "attempts > 0" but "successes = 0", the paired device is not running evolIA (or you paired a car/headset, not the other phone).\n• If "successes > 0" but the receiver shows "Frames received = 0", the connection drops before any frame goes through (range issue).\n• If receiver shows "Frames received > 0" but message not displayed, check fingerprint match (sender\'s contact fingerprint must equal receiver\'s identity).</string>
+    <string name="chat_diag_udp_section">\n\nWI-FI / UDP TRANSPORT (since service start)\n• Sends OK: %1$d\n• Sends failed: %2$d\n• Cold peers: %3$d / %4$d known\n• Throttle events:\n   - Egress (self-DoS guard): %5$d\n   - Ingress defense gate: %6$d\n   - Cold-peer skipped: %7$d\n• Receives: blocks=%8$d, chat=%9$d\n• Attacks (blocks): inj=%10$d, badsig=%11$d, forged=%12$d, malformed=%13$d\n• Attacks (chat): inj=%14$d, malformed=%15$d\n• Defense levels (separate intakes):\n   - Blocks: %16$.2f\n   - Chat: %17$.2f\n• Live cycle: %18$d ms (base %19$d ms — adaptive stretch under pressure, up to 2×)\n\nHOW TO READ THIS (UDP):\n• If "Sends OK" stays at 0, mesh-sync is not reaching any peer (binary not running, or no peer in evolia_peers.json).\n• If "Sends OK > 0" but the receiver shows "Receives chat = 0", the datagrams arrive but the recipient fingerprint does not match yours (or the receiver\'s mesh-sync is silent).\n• "Cold peers > 0" means N peers are in the exponential-backoff window (5s → 5 min) after repeated failures — they are not being dialled until the window expires.\n• Throttle events: "Egress" is self-shaping, "Ingress defense" is reactive to hostile pressure, "Cold-peer skipped" means peer-health saved a wasted Dial.\n• Defense levels: with flow isolation, blocks and chat are throttled independently. A chat attack does not starve block propagation, and vice versa. The cycle stretches by the max of the two levels.\n• "Live cycle > base cycle" means the loop is stretched because one or both defenses absorbed pressure — battery saving while under attack. Returns to base automatically as both buffers decay.</string>
     <string name="chat_diag_on">ON</string>
     <string name="chat_diag_off">OFF</string>
     <string name="chat_diag_pair_device">Pair a device</string>
