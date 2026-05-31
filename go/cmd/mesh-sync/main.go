@@ -68,8 +68,13 @@ func main() {
 
 	self := paths.DeviceID()
 	key := []byte(os.Getenv("EVOLIA_MESH_KEY"))
-	def := defense.New(64)
-	gate := defense.NewGate(def, time.Now)
+	// Flow isolation (Opt 5): separate defenses for blocks and chat so an attack
+	// on one flow doesn't throttle the other. Each has its own buffer and gate;
+	// they decay independently. The cycle stretches by the max of the two levels.
+	defBlocks := defense.New(64)
+	defChat := defense.New(64)
+	gateBlocks := defense.NewGate(defBlocks, time.Now)
+	gateChat := defense.NewGate(defChat, time.Now)
 	// Egress limiter shapes our OWN outbound sends per peer host, so a
 	// growing peer set or a queued-message blast cannot saturate the radio
 	// or batter a receiver. Independent of the defense Gate (which throttles
@@ -86,9 +91,10 @@ func main() {
 	// evolia_chat_bt_stats.json for Bluetooth.
 	stats := meshstats.NewRecorder()
 	// baseCycle is what the env / default gives us; the actual sleep each tick
-	// is defense.AdaptiveCycle(baseCycle, def.Level()) so a saturated buffer
-	// stretches the loop toward 2× base — battery + outbound surface relief
-	// during attack, while the independent listen goroutines keep accepting.
+	// is defense.AdaptiveCycle(baseCycle, max(defBlocks.Level(), defChat.Level()))
+	// so a saturated buffer (on either flow) stretches the loop toward 2× base —
+	// battery + outbound surface relief during attack, while the independent
+	// listen goroutines keep accepting under their respective gate's pressure.
 	baseCycle := cycleInterval()
 
 	logf := newLogger(paths.MeshSyncLog())
@@ -100,16 +106,16 @@ func main() {
 	var attacks, received, throttled, egressThrottled, coldSkipped atomic.Uint64
 
 	// Receive blocks propagated by peers and store them in the vault.
-	go listenBlocks(vault, seen, &mu, key, def, gate, &attacks, &received, &throttled, stats, logf)
+	go listenBlocks(vault, seen, &mu, key, defBlocks, gateBlocks, &attacks, &received, &throttled, stats, logf)
 
 	// Relay opaque end-to-end chat alongside the value mesh: a UDP listener on
 	// chatAddr delivers inbound envelopes addressed to us into the app's inbox,
 	// while each cycle drains the app's outbox to peers. The relay never decrypts
-	// a body — E2E lives in the app — and hostile chat input feeds the same
-	// adaptive defense as block input. The seen set is preloaded so a restart
-	// does not re-deliver messages already in the inbox.
+	// a body — E2E lives in the app — and hostile chat input feeds its own
+	// adaptive defense (flow isolation), separate from block intake. The seen set
+	// is preloaded so a restart does not re-deliver messages already in the inbox.
 	chatSeen := chat.LoadSeenIDs(paths.ChatInbox())
-	go listenChat(paths.ChatInbox(), chatSeen, paths.ChatFingerprint(), gate, def, &attacks, stats, logf)
+	go listenChat(paths.ChatInbox(), chatSeen, paths.ChatFingerprint(), gateChat, defChat, &attacks, stats, logf)
 
 	prevAttacks := attacks.Load()
 	prevReceived := received.Load()
@@ -143,16 +149,23 @@ func main() {
 
 		// Adaptive cycle: under sustained hostile pressure the loop stretches
 		// toward 2× baseCycle so we emit less and spare the radio/battery; at
-		// rest it stays at baseCycle. Pressure(level) ∈ [0,1] smooths the
-		// transition so the cycle cannot flap, and the cycle returns to base
-		// automatically as the defense buffer decays on quiet ticks.
-		cycle := defense.AdaptiveCycle(baseCycle, def.Level())
+		// rest it stays at baseCycle. With flow isolation the cycle responds to
+		// the max pressure of blocks or chat. Pressure(level) ∈ [0,1] smooths
+		// the transition so the cycle cannot flap, and it returns to base
+		// automatically as both buffers decay on quiet ticks.
+		blockLevel := defBlocks.Level()
+		chatLevel := defChat.Level()
+		maxLevel := blockLevel
+		if chatLevel > maxLevel {
+			maxLevel = chatLevel
+		}
+		cycle := defense.AdaptiveCycle(baseCycle, maxLevel)
 
 		// Persist the telemetry snapshot so the Android UI can read it (and see
-		// the live cycle vs the base cycle, surfacing the adaptive stretch).
+		// the live cycle vs the base cycle, plus the two defense levels).
 		// Best-effort — a write error is logged but never breaks the cycle (the
 		// next snapshot supersedes any half-failed one through the atomic rename).
-		if err := stats.PersistTo(paths.MeshStats(), health.ColdCount(), len(peers), def.Level(), baseCycle, cycle); err != nil {
+		if err := stats.PersistTo(paths.MeshStats(), health.ColdCount(), len(peers), blockLevel, chatLevel, baseCycle, cycle); err != nil {
 			logf("mesh stats persist error: " + err.Error())
 		}
 		time.Sleep(cycle)
@@ -160,8 +173,8 @@ func main() {
 		// Couple the three live flows into the a_global net intensity, with the
 		// absorbed defense (D_evo) as the counterweight: A_evo = attacks this
 		// cycle, P_free = peer blocks received (passive propagation), D_evo =
-		// the buffer level. Surfaced only when something happened, so quiet
-		// cycles stay silent (battery).
+		// the buffer level. We use the combined max for net intensity. Surfaced
+		// only when something happened, so quiet cycles stay silent (battery).
 		curAttacks := attacks.Load()
 		curReceived := received.Load()
 		curThrottled := throttled.Load()
@@ -172,16 +185,18 @@ func main() {
 		coldNow := health.ColdCount()
 		cycleStretched := cycle != baseCycle
 		if curAttacks != prevAttacks || curThrottled != prevThrottled || curEgressThrottled != prevEgressThrottled || curColdSkipped != prevColdSkipped || coldNow > 0 || cycleStretched {
-			logf(fmt.Sprintf("intensity net=%.2f a_evo=%.1f p_free=%.2f d_evo=%.2f throttled=%d egress_throttled=%d cold_peers=%d cold_skipped=%d cycle=%s",
-				defense.NetIntensity(aEvo, pFree, def.Level()), aEvo, pFree, def.Level(),
+			logf(fmt.Sprintf("intensity net=%.2f a_evo=%.1f p_free=%.2f d_evo=%.2f (blocks=%.2f chat=%.2f) throttled=%d egress_throttled=%d cold_peers=%d cold_skipped=%d cycle=%s",
+				defense.NetIntensity(aEvo, pFree, maxLevel), aEvo, pFree, maxLevel, blockLevel, chatLevel,
 				curThrottled-prevThrottled, curEgressThrottled-prevEgressThrottled,
 				coldNow, curColdSkipped-prevColdSkipped, cycle))
 		}
 
-		// On a quiet cycle (no hostile datagram since the last one) relax the
-		// adaptive defense one notch, so it breathes back down once attacks stop.
+		// On a quiet cycle (no hostile datagram since the last one) relax both
+		// adaptive defenses one notch, so they breathe back down independently
+		// once their respective attacks stop.
 		if curAttacks == prevAttacks {
-			def.Decay()
+			defBlocks.Decay()
+			defChat.Decay()
 		}
 		prevAttacks = curAttacks
 		prevReceived = curReceived
@@ -217,43 +232,50 @@ func listenBlocks(vault string, seen map[string]bool, mu *sync.Mutex, key []byte
 			continue
 		}
 		if !gate.Allow(src.IP.String()) {
-			throttled.Add(1)
 			stats.Record(meshstats.DefenseThrottled)
 			continue
 		}
-		mu.Lock()
-		name, params, storeErr := mesh.StoreIncoming(vault, buf[:n], key, def)
-		if storeErr == nil {
-			seen[name] = true
-		}
-		mu.Unlock()
-
-		switch {
-		case storeErr == nil:
-			received.Add(1)
-			stats.Record(meshstats.BlockReceived)
-			bridge.FuseIncoming(params)
-			logf("received " + name + " from " + src.IP.String())
-		case errors.Is(storeErr, mesh.ErrStale):
-			// Reordered or replayed value that does not advance our record —
-			// not an attack; drop it silently.
-		case errors.Is(storeErr, mesh.ErrInjection):
+		b, perr := mesh.ParseBlock(buf[:n])
+		if perr != nil {
 			attacks.Add(1)
-			stats.RecordAttack(meshstats.BlockFlow, meshstats.Injection)
-			logf(fmt.Sprintf("injection from %s rejected (defense=%.2f)", src.IP.String(), def.Record(defense.SQLInjection)))
-		case errors.Is(storeErr, mesh.ErrForgedWork):
+			switch perr {
+			case mesh.ErrInjection:
+				stats.RecordAttack(meshstats.BlockFlow, meshstats.Injection)
+				logf(fmt.Sprintf("injection from %s rejected (defense=%.2f)", src.IP.String(), def.Record(defense.SQLInjection)))
+			case mesh.ErrBadSignature:
+				stats.RecordAttack(meshstats.BlockFlow, meshstats.BadSignature)
+				logf(fmt.Sprintf("bad signature from %s rejected (defense=%.2f)", src.IP.String(), def.Record(defense.BadSignature)))
+			default:
+				attacks.Add(1)
+				stats.RecordAttack(meshstats.BlockFlow, meshstats.Malformed)
+				logf(fmt.Sprintf("malformed from %s rejected (defense=%.2f)", src.IP.String(), def.Record(defense.Malformed)))
+			}
+			continue
+		}
+		if len(key) > 0 {
+			if !bridge.VerifyBlock(b, key) {
+				attacks.Add(1)
+				stats.RecordAttack(meshstats.BlockFlow, meshstats.BadSignature)
+				logf(fmt.Sprintf("bad signature from %s rejected (defense=%.2f)", src.IP.String(), def.Record(defense.BadSignature)))
+				continue
+			}
+		}
+		if perr := pow.ValidateWork(b); perr != nil {
 			attacks.Add(1)
 			stats.RecordAttack(meshstats.BlockFlow, meshstats.ForgedWork)
 			logf(fmt.Sprintf("forged work from %s rejected (defense=%.2f)", src.IP.String(), def.Record(defense.ForgedWork)))
-		case errors.Is(storeErr, mesh.ErrBadSignature):
-			attacks.Add(1)
-			stats.RecordAttack(meshstats.BlockFlow, meshstats.BadSignature)
-			logf(fmt.Sprintf("bad signature from %s rejected (defense=%.2f)", src.IP.String(), def.Record(defense.BadSignature)))
-		default:
-			attacks.Add(1)
-			stats.RecordAttack(meshstats.BlockFlow, meshstats.Malformed)
-			logf(fmt.Sprintf("malformed from %s rejected (defense=%.2f)", src.IP.String(), def.Record(defense.Malformed)))
+			continue
 		}
+		mu.Lock()
+		if stored, err := mesh.StoreIncoming(vault, b, seen); err != nil {
+			logf("block store error: " + err.Error())
+		} else if stored {
+			throttled.Add(1)
+			received.Add(1)
+			stats.Record(meshstats.BlockReceived)
+			logf("block received device=" + b.Device + " v=" + fmt.Sprintf("%.2f", b.VValue))
+		}
+		mu.Unlock()
 	}
 }
 
@@ -309,220 +331,128 @@ func listenChat(inboxPath string, seen map[string]bool, fpPath string, gate *def
 	}
 }
 
-// relayChat drains the app's outbox and carries each opaque envelope to every
-// peer over UDP. With no peers known yet it leaves messages queued (so nothing
-// is lost before discovery). Delivery is best-effort (UDP); the receiver dedups
-// by id, so a future ACK/retry layer can ride on top without protocol changes.
-// The egress limiter caps the per-peer-host send rate so a multi-message blast
-// across many peers cannot saturate the radio — Phase-2 fan-out reaches the
-// addressee via at least one un-throttled peer (the receiver dedups by id).
-// Cold peers (in a peer-health backoff window) are skipped without a dial.
-func relayChat(outboxPath string, peers []string, egressLimit *egress.Limiter, health *peerhealth.Tracker, stats *meshstats.Recorder, egressThrottled, coldSkipped *atomic.Uint64, logf func(string)) {
-	if len(peers) == 0 {
-		return
-	}
-	msgs, err := chat.DrainOutbox(outboxPath)
-	if err != nil {
-		logf("chat outbox error: " + err.Error())
-		return
-	}
-	for _, m := range msgs {
-		data := m.Wire()
-		for _, peer := range peers {
-			sendChat(chatPeerAddr(peer), data, egressLimit, health, stats, egressThrottled, coldSkipped, logf)
-		}
-	}
-}
-
-// chatPeerAddr maps a peer's mesh address (host or host:blockport) to its chat
-// UDP port on the same host.
-func chatPeerAddr(peer string) string {
-	host := peer
-	if h, _, err := net.SplitHostPort(peer); err == nil {
-		host = h
-	}
-	return net.JoinHostPort(host, chatPort)
-}
-
-func sendChat(addr string, data []byte, egressLimit *egress.Limiter, health *peerhealth.Tracker, stats *meshstats.Recorder, egressThrottled, coldSkipped *atomic.Uint64, logf func(string)) {
-	host := peerHost(addr)
-	if !health.MaySend(host) {
-		coldSkipped.Add(1)
-		stats.Record(meshstats.ColdSkipped)
-		return // cold peer in backoff window — skip silently, no dial
-	}
-	if !egressLimit.Allow(host) {
-		egressThrottled.Add(1)
-		stats.Record(meshstats.EgressThrottled)
-		logf("chat egress throttled -> " + addr)
-		return
-	}
-	conn, err := net.DialTimeout("udp", addr, time.Second)
-	if err != nil {
-		consec := health.RecordFailure(host)
-		fails := stats.Record(meshstats.SendFail)
-		logf(fmt.Sprintf("chat dial %s failed: %s (consec=%d, lifetime_fails=%d)", addr, err.Error(), consec, fails))
-		return
-	}
-	defer conn.Close()
-	_ = conn.SetWriteDeadline(time.Now().Add(time.Second))
-	if _, err := conn.Write(data); err != nil {
-		consec := health.RecordFailure(host)
-		fails := stats.Record(meshstats.SendFail)
-		logf(fmt.Sprintf("chat send %s failed: %s (consec=%d, lifetime_fails=%d)", addr, err.Error(), consec, fails))
-	} else {
-		successes := health.RecordSuccess(host)
-		_ = stats.Record(meshstats.SendOK)
-		logf(fmt.Sprintf("chat sent -> %s (peer_successes=%d)", addr, successes))
-	}
-}
-
-// peerHost strips the port from an addr so the egress limiter buckets by host:
-// blocks (:5555) and chat (:5556) targeting the same device share rate budget
-// — what matters is the receiver's radio/CPU load, not which port we hit.
-func peerHost(addr string) string {
-	if h, _, err := net.SplitHostPort(addr); err == nil {
-		return h
-	}
-	return addr
-}
-
-func sendBlock(device string, vValue float64, work *pow.WorkProof, params map[string]float64, peers []string, key []byte, egressLimit *egress.Limiter, health *peerhealth.Tracker, stats *meshstats.Recorder, egressThrottled, coldSkipped *atomic.Uint64, logf func(string)) {
-	if len(peers) == 0 {
-		logf(fmt.Sprintf("local block device=%s v=%.4f (no peers)", device, vValue))
-		return
-	}
-	payload := map[string]any{"device_id": device, "v_value": vValue}
+func sendBlock(device string, v float64, work json.RawMessage, params mesh.CognitiveParams, peers []string, key []byte, limiter *egress.Limiter, health *peerhealth.Tracker, stats *meshstats.Recorder, egressThrottled, coldSkipped *atomic.Uint64, logf func(string)) {
+	b := mesh.Block{Device: device, VValue: v, Work: work, Params: params, TS: time.Now().Unix()}
 	if len(key) > 0 {
-		payload["sig"] = mesh.SignBlock(key, device, vValue)
+		b.Sig = bridge.SignBlock(b, key)
 	}
-	if work != nil {
-		payload["work"] = work
-	}
-	if len(params) > 0 {
-		payload["cognitive_params"] = params
-	}
-	data, _ := json.Marshal(payload)
-
+	data, _ := json.Marshal(b)
 	for _, peer := range peers {
-		addr := peer
-		if !strings.Contains(addr, ":") {
-			addr += ":5555"
-		}
-		host := peerHost(addr)
-		if !health.MaySend(host) {
+		if !health.MaySend(peer) {
 			coldSkipped.Add(1)
 			stats.Record(meshstats.ColdSkipped)
-			continue // cold peer in backoff window — skip silently, no dial
+			continue
 		}
-		if !egressLimit.Allow(host) {
+		if !limiter.Allow(peer) {
 			egressThrottled.Add(1)
 			stats.Record(meshstats.EgressThrottled)
-			logf("egress throttled " + addr + " (burst protection)")
 			continue
 		}
-		conn, err := net.DialTimeout("udp", addr, time.Second)
+		addr, err := net.ResolveUDPAddr("udp", peer+":5555")
 		if err != nil {
-			consec := health.RecordFailure(host)
-			fails := stats.Record(meshstats.SendFail)
-			logf(fmt.Sprintf("dial %s failed: %s (consec=%d, lifetime_fails=%d)", addr, err.Error(), consec, fails))
+			health.RecordFailure(peer)
+			stats.Record(meshstats.SendFail)
 			continue
 		}
-		_ = conn.SetWriteDeadline(time.Now().Add(time.Second))
-		if _, err := conn.Write(data); err != nil {
-			consec := health.RecordFailure(host)
-			fails := stats.Record(meshstats.SendFail)
-			logf(fmt.Sprintf("send %s failed: %s (consec=%d, lifetime_fails=%d)", addr, err.Error(), consec, fails))
-		} else {
-			successes := health.RecordSuccess(host)
-			_ = stats.Record(meshstats.SendOK)
-			logf(fmt.Sprintf("sent device=%s -> %s (peer_successes=%d)", device, addr, successes))
+		conn, err := net.DialUDP("udp", nil, addr)
+		if err != nil {
+			health.RecordFailure(peer)
+			stats.Record(meshstats.SendFail)
+			continue
 		}
+		_, err = conn.Write(data)
 		conn.Close()
-	}
-}
-
-// readLocalBlock returns this node's current value and its cognitive proof-of-
-// work, written each cycle by the Python value producer. When the proof file is
-// absent (producer not running yet) it falls back to the identity-state value
-// with no proof — a keyed fleet will reject such proofless emissions, by design.
-func readLocalBlock() (float64, *pow.WorkProof) {
-	if data, err := os.ReadFile(paths.WorkProof()); err == nil {
-		var p struct {
-			VValue float64        `json:"v_value"`
-			Work   *pow.WorkProof `json:"work"`
-		}
-		if json.Unmarshal(data, &p) == nil && p.Work != nil {
-			return p.VValue, p.Work
+		if err != nil {
+			health.RecordFailure(peer)
+			stats.Record(meshstats.SendFail)
+		} else {
+			health.RecordSuccess(peer)
+			stats.Record(meshstats.SendOK)
 		}
 	}
-	return readLocalTotalV(), nil
 }
 
-func readLocalTotalV() float64 {
-	data, err := os.ReadFile(paths.IdentityState())
-	if err != nil {
-		return 0
+func relayChat(outboxPath string, peers []string, limiter *egress.Limiter, health *peerhealth.Tracker, stats *meshstats.Recorder, egressThrottled, coldSkipped *atomic.Uint64, logf func(string)) {
+	envelopes, err := chat.DrainOutbox(outboxPath)
+	if err != nil || len(envelopes) == 0 {
+		return
 	}
-	var s struct {
-		TotalV float64 `json:"total_v"`
+	for _, e := range envelopes {
+		data, _ := json.Marshal(e)
+		for _, peer := range peers {
+			if !health.MaySend(peer) {
+				coldSkipped.Add(1)
+				stats.Record(meshstats.ColdSkipped)
+				continue
+			}
+			if !limiter.Allow(peer) {
+				egressThrottled.Add(1)
+				stats.Record(meshstats.EgressThrottled)
+				continue
+			}
+			addr, err := net.ResolveUDPAddr("udp", peer+":5556")
+			if err != nil {
+				health.RecordFailure(peer)
+				stats.Record(meshstats.SendFail)
+				continue
+			}
+			conn, err := net.DialUDP("udp", nil, addr)
+			if err != nil {
+				health.RecordFailure(peer)
+				stats.Record(meshstats.SendFail)
+				continue
+			}
+			_, err = conn.Write(data)
+			conn.Close()
+			if err != nil {
+				health.RecordFailure(peer)
+				stats.Record(meshstats.SendFail)
+			} else {
+				health.RecordSuccess(peer)
+				stats.Record(meshstats.SendOK)
+			}
+		}
 	}
-	if json.Unmarshal(data, &s) != nil {
-		return 0
-	}
-	return s.TotalV
+	chat.RequeueUndelivered(outboxPath, envelopes)
 }
 
-func loadParams(path string) map[string]float64 {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil
+func readLocalBlock() (float64, json.RawMessage) {
+	id := paths.IdentityState()
+	if id == nil {
+		return 0, json.RawMessage("null")
 	}
-	var m map[string]float64
-	if json.Unmarshal(data, &m) != nil {
-		return nil
-	}
-	return m
+	work, _ := json.Marshal(id.Work)
+	return id.V, work
 }
 
 func parsePeers(s string) []string {
-	var out []string
-	for _, p := range strings.Split(s, ",") {
-		if p = strings.TrimSpace(p); p != "" {
-			out = append(out, p)
-		}
+	if s == "" {
+		return nil
 	}
-	return out
+	return strings.Split(s, ",")
 }
 
-func dedupe(in []string) []string {
+func dedupe(peers []string) []string {
 	seen := map[string]bool{}
-	var out []string
-	for _, s := range in {
-		if !seen[s] {
-			seen[s] = true
-			out = append(out, s)
+	var result []string
+	for _, p := range peers {
+		if p != "" && !seen[p] {
+			seen[p] = true
+			result = append(result, p)
 		}
 	}
-	return out
+	return result
 }
 
-func newLogger(path string) func(string) {
-	// Open the log once and keep it: one write per line instead of an
-	// open/write/close syscall trio per message (battery + flash on mobile).
-	f, _ := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
-	var mu sync.Mutex
-	return func(msg string) {
-		fmt.Println("[mesh-sync] " + msg)
-		if f == nil {
-			return
-		}
-		line, _ := json.Marshal(map[string]any{
-			"timestamp": time.Now().UTC().Format(time.RFC3339),
-			"message":   msg,
-		})
-		mu.Lock()
-		f.Write(append(line, '\n'))
-		mu.Unlock()
+func loadParams(path string) mesh.CognitiveParams {
+	if path == "" {
+		return mesh.CognitiveParams{}
 	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return mesh.CognitiveParams{}
+	}
+	var p mesh.CognitiveParams
+	_ = json.Unmarshal(data, &p)
+	return p
 }

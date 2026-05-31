@@ -138,21 +138,24 @@ func (r *Recorder) RecordAttack(flow Flow, kind AttackKind) uint64 {
 // Snapshot is the JSON shape persisted to disk. Field names match the
 // counters the user asked for (sends_ok, sends_fail, peers_cold,
 // attacks_by_flow, throttle_events) so the Android UI consumes the file
-// with no mapping. CycleMs is the duration the mesh loop is sleeping
-// between ticks RIGHT NOW (post-adaptive-stretch): equal to base_cycle_ms
-// at rest, up to 2× base under sustained pressure.
+// with no mapping. With flow isolation (Opt 5) we track separate defense
+// levels for blocks and chat: BlockDefenseLevel and ChatDefenseLevel.
+// CycleMs is the duration the mesh loop is sleeping between ticks RIGHT NOW
+// (post-adaptive-stretch): equal to base_cycle_ms at rest, up to 2× base
+// under sustained pressure. The cycle stretches by max(block, chat) level.
 type Snapshot struct {
-	UpdatedAt      string         `json:"updated_at"`
-	SendsOK        uint64         `json:"sends_ok"`
-	SendsFail      uint64         `json:"sends_fail"`
-	PeersCold      int            `json:"peers_cold"`
-	PeersKnown     int            `json:"peers_known"`
-	ThrottleEvents ThrottleCounts `json:"throttle_events"`
-	AttacksByFlow  AttacksByFlow  `json:"attacks_by_flow"`
-	Receives       ReceiveCounts  `json:"receives"`
-	DefenseLevel   float64        `json:"defense_level"`
-	BaseCycleMs    int64          `json:"base_cycle_ms"`
-	CycleMs        int64          `json:"cycle_ms"`
+	UpdatedAt         string         `json:"updated_at"`
+	SendsOK           uint64         `json:"sends_ok"`
+	SendsFail         uint64         `json:"sends_fail"`
+	PeersCold         int            `json:"peers_cold"`
+	PeersKnown        int            `json:"peers_known"`
+	ThrottleEvents    ThrottleCounts `json:"throttle_events"`
+	AttacksByFlow     AttacksByFlow  `json:"attacks_by_flow"`
+	Receives          ReceiveCounts  `json:"receives"`
+	BlockDefenseLevel float64        `json:"block_defense_level"`
+	ChatDefenseLevel  float64        `json:"chat_defense_level"`
+	BaseCycleMs       int64          `json:"base_cycle_ms"`
+	CycleMs           int64          `json:"cycle_ms"`
 }
 
 // ThrottleCounts groups the three throttle reasons so the UI shows WHY a send
@@ -191,12 +194,14 @@ type ReceiveCounts struct {
 }
 
 // Snapshot reads every counter once and folds in the externally-supplied
-// dynamic state (cold/known peer counts, defense level, base + current cycle
-// in milliseconds) so the file reflects both monotonic activity and the live
-// system snapshot at this moment. baseCycle is the configured baseline;
-// currentCycle is the value after defense.AdaptiveCycle has stretched it for
-// this tick — they're equal at rest and diverge under pressure.
-func (r *Recorder) Snapshot(peersCold, peersKnown int, defenseLevel float64, baseCycle, currentCycle time.Duration) Snapshot {
+// dynamic state (cold/known peer counts, defense levels for blocks and chat,
+// base + current cycle in milliseconds) so the file reflects both monotonic
+// activity and the live system snapshot at this moment. With flow isolation
+// we track blockDefenseLevel and chatDefenseLevel separately. baseCycle is
+// the configured baseline; currentCycle is the value after
+// defense.AdaptiveCycle has stretched it for this tick — they're equal at
+// rest and diverge under pressure.
+func (r *Recorder) Snapshot(peersCold, peersKnown int, blockDefenseLevel, chatDefenseLevel float64, baseCycle, currentCycle time.Duration) Snapshot {
 	return Snapshot{
 		UpdatedAt:  time.Now().UTC().Format(time.RFC3339),
 		SendsOK:    r.sendsOK.Load(),
@@ -224,17 +229,19 @@ func (r *Recorder) Snapshot(peersCold, peersKnown int, defenseLevel float64, bas
 			Blocks: r.blocksReceived.Load(),
 			Chat:   r.chatReceived.Load(),
 		},
-		DefenseLevel: defenseLevel,
-		BaseCycleMs:  baseCycle.Milliseconds(),
-		CycleMs:      currentCycle.Milliseconds(),
+		BlockDefenseLevel: blockDefenseLevel,
+		ChatDefenseLevel:  chatDefenseLevel,
+		BaseCycleMs:       baseCycle.Milliseconds(),
+		CycleMs:           currentCycle.Milliseconds(),
 	}
 }
 
 // PersistTo writes a snapshot to path atomically (temp file + fsync + rename,
 // via paths.WriteFileAtomic). A half-written stats file is impossible — a
-// reader sees either the previous version or the new one.
-func (r *Recorder) PersistTo(path string, peersCold, peersKnown int, defenseLevel float64, baseCycle, currentCycle time.Duration) error {
-	data, err := json.MarshalIndent(r.Snapshot(peersCold, peersKnown, defenseLevel, baseCycle, currentCycle), "", "  ")
+// reader sees either the previous version or the new one. With flow isolation,
+// blockDefenseLevel and chatDefenseLevel are persisted separately.
+func (r *Recorder) PersistTo(path string, peersCold, peersKnown int, blockDefenseLevel, chatDefenseLevel float64, baseCycle, currentCycle time.Duration) error {
+	data, err := json.MarshalIndent(r.Snapshot(peersCold, peersKnown, blockDefenseLevel, chatDefenseLevel, baseCycle, currentCycle), "", "  ")
 	if err != nil {
 		return err
 	}
