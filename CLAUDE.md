@@ -39,6 +39,12 @@ go/                      Go module `evolia` — networking
                          HMAC sign/verify (SignBlock/VerifyBlock) + LoadPeers + TotalV
   netdisc/               peer-discovery registry + announce parsing (testable)
   bridge/                peer block-exchange HTTP handlers + param fusion + defense-gated intake
+  egress/                per-peer-host outbound token bucket (preventive self-DoS guard):
+                         caps the rate at which mesh-sync sends to any single peer so a
+                         growing peer set or a queued-message blast cannot saturate the
+                         radio. Independent of defense.Gate (which throttles hostile
+                         ingress); a throttled send is dropped, not scored as an attack.
+                         Burst 8, refill 4/s, keyed by host (blocks+chat share budget).
   chat/                  opaque transport for the app's end-to-end peer chat: routing
                          envelope (Message) around a sealed body the relay NEVER decrypts,
                          outbox drain (atomic rename) + inbox append (id dedup) + injection-

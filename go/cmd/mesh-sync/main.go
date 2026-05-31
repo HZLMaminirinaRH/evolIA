@@ -35,6 +35,7 @@ import (
 	"evolia/bridge"
 	"evolia/chat"
 	"evolia/defense"
+	"evolia/egress"
 	"evolia/mesh"
 	"evolia/paths"
 	"evolia/pow"
@@ -67,6 +68,11 @@ func main() {
 	key := []byte(os.Getenv("EVOLIA_MESH_KEY"))
 	def := defense.New(64)
 	gate := defense.NewGate(def, time.Now)
+	// Egress limiter shapes our OWN outbound sends per peer host, so a
+	// growing peer set or a queued-message blast cannot saturate the radio
+	// or batter a receiver. Independent of the defense Gate (which throttles
+	// hostile ingress) — egress shaping is preventive, not reactive.
+	egressLimit := egress.NewLimiter(time.Now)
 	cycle := cycleInterval()
 
 	logf := newLogger(paths.MeshSyncLog())
@@ -75,7 +81,7 @@ func main() {
 
 	seen := map[string]bool{}
 	var mu sync.Mutex
-	var attacks, received, throttled atomic.Uint64
+	var attacks, received, throttled, egressThrottled atomic.Uint64
 
 	// Receive blocks propagated by peers and store them in the vault.
 	go listenBlocks(vault, seen, &mu, key, def, gate, &attacks, &received, &throttled, logf)
@@ -92,6 +98,7 @@ func main() {
 	prevAttacks := attacks.Load()
 	prevReceived := received.Load()
 	prevThrottled := throttled.Load()
+	prevEgressThrottled := egressThrottled.Load()
 	for {
 		// Peers come from EVOLIA_PEERS plus whatever evolia-net has discovered.
 		peers := dedupe(append(parsePeers(os.Getenv("EVOLIA_PEERS")), mesh.LoadPeers()...))
@@ -100,7 +107,7 @@ func main() {
 		// Emit this node's current value each cycle (signed, with its cognitive
 		// proof-of-work and params attached).
 		localV, localWork := readLocalBlock()
-		sendBlock(self, localV, localWork, params, peers, key, logf)
+		sendBlock(self, localV, localWork, params, peers, key, egressLimit, &egressThrottled, logf)
 
 		// Relay any externally-dropped vault block once (received UDP blocks are
 		// marked seen, so they are never re-propagated — no amplification).
@@ -111,11 +118,11 @@ func main() {
 			logf("scan error: " + err.Error())
 		}
 		for _, b := range blocks {
-			sendBlock(b.Device, b.VValue, b.Work, params, peers, key, logf)
+			sendBlock(b.Device, b.VValue, b.Work, params, peers, key, egressLimit, &egressThrottled, logf)
 		}
 
 		// Carry any queued chat envelopes to peers (opaque; never decrypted).
-		relayChat(paths.ChatOutbox(), peers, logf)
+		relayChat(paths.ChatOutbox(), peers, egressLimit, &egressThrottled, logf)
 		time.Sleep(cycle)
 
 		// Couple the three live flows into the a_global net intensity, with the
@@ -126,12 +133,13 @@ func main() {
 		curAttacks := attacks.Load()
 		curReceived := received.Load()
 		curThrottled := throttled.Load()
+		curEgressThrottled := egressThrottled.Load()
 		aEvo := float64(curAttacks - prevAttacks)
 		pFree := 0.1 * float64(curReceived-prevReceived)
-		if curAttacks != prevAttacks || curThrottled != prevThrottled {
-			logf(fmt.Sprintf("intensity net=%.2f a_evo=%.1f p_free=%.2f d_evo=%.2f throttled=%d",
+		if curAttacks != prevAttacks || curThrottled != prevThrottled || curEgressThrottled != prevEgressThrottled {
+			logf(fmt.Sprintf("intensity net=%.2f a_evo=%.1f p_free=%.2f d_evo=%.2f throttled=%d egress_throttled=%d",
 				defense.NetIntensity(aEvo, pFree, def.Level()), aEvo, pFree, def.Level(),
-				curThrottled-prevThrottled))
+				curThrottled-prevThrottled, curEgressThrottled-prevEgressThrottled))
 		}
 
 		// On a quiet cycle (no hostile datagram since the last one) relax the
@@ -141,6 +149,7 @@ func main() {
 		}
 		prevAttacks = curAttacks
 		prevReceived = curReceived
+		prevEgressThrottled = curEgressThrottled
 		prevThrottled = curThrottled
 	}
 }
@@ -257,7 +266,10 @@ func listenChat(inboxPath string, seen map[string]bool, fpPath string, gate *def
 // peer over UDP. With no peers known yet it leaves messages queued (so nothing
 // is lost before discovery). Delivery is best-effort (UDP); the receiver dedups
 // by id, so a future ACK/retry layer can ride on top without protocol changes.
-func relayChat(outboxPath string, peers []string, logf func(string)) {
+// The egress limiter caps the per-peer-host send rate so a multi-message blast
+// across many peers cannot saturate the radio — Phase-2 fan-out reaches the
+// addressee via at least one un-throttled peer (the receiver dedups by id).
+func relayChat(outboxPath string, peers []string, egressLimit *egress.Limiter, egressThrottled *atomic.Uint64, logf func(string)) {
 	if len(peers) == 0 {
 		return
 	}
@@ -269,7 +281,7 @@ func relayChat(outboxPath string, peers []string, logf func(string)) {
 	for _, m := range msgs {
 		data := m.Wire()
 		for _, peer := range peers {
-			sendChat(chatPeerAddr(peer), data, logf)
+			sendChat(chatPeerAddr(peer), data, egressLimit, egressThrottled, logf)
 		}
 	}
 }
@@ -284,7 +296,12 @@ func chatPeerAddr(peer string) string {
 	return net.JoinHostPort(host, chatPort)
 }
 
-func sendChat(addr string, data []byte, logf func(string)) {
+func sendChat(addr string, data []byte, egressLimit *egress.Limiter, egressThrottled *atomic.Uint64, logf func(string)) {
+	if !egressLimit.Allow(peerHost(addr)) {
+		egressThrottled.Add(1)
+		logf("chat egress throttled -> " + addr)
+		return
+	}
 	conn, err := net.DialTimeout("udp", addr, time.Second)
 	if err != nil {
 		logf("chat dial " + addr + " failed: " + err.Error())
@@ -299,7 +316,17 @@ func sendChat(addr string, data []byte, logf func(string)) {
 	}
 }
 
-func sendBlock(device string, vValue float64, work *pow.WorkProof, params map[string]float64, peers []string, key []byte, logf func(string)) {
+// peerHost strips the port from an addr so the egress limiter buckets by host:
+// blocks (:5555) and chat (:5556) targeting the same device share rate budget
+// — what matters is the receiver's radio/CPU load, not which port we hit.
+func peerHost(addr string) string {
+	if h, _, err := net.SplitHostPort(addr); err == nil {
+		return h
+	}
+	return addr
+}
+
+func sendBlock(device string, vValue float64, work *pow.WorkProof, params map[string]float64, peers []string, key []byte, egressLimit *egress.Limiter, egressThrottled *atomic.Uint64, logf func(string)) {
 	if len(peers) == 0 {
 		logf(fmt.Sprintf("local block device=%s v=%.4f (no peers)", device, vValue))
 		return
@@ -320,6 +347,11 @@ func sendBlock(device string, vValue float64, work *pow.WorkProof, params map[st
 		addr := peer
 		if !strings.Contains(addr, ":") {
 			addr += ":5555"
+		}
+		if !egressLimit.Allow(peerHost(addr)) {
+			egressThrottled.Add(1)
+			logf("egress throttled " + addr + " (burst protection)")
+			continue
 		}
 		conn, err := net.DialTimeout("udp", addr, time.Second)
 		if err != nil {
