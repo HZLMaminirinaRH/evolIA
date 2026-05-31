@@ -473,7 +473,7 @@ class ChatActivity : AppCompatActivity() {
             stats.optLong("frames_received"),
             stats.optLong("intake_rejections"),
             outboxPending,
-        )
+        ) + formatUdpDiagnosticSection(readMeshStats())
         AlertDialog.Builder(this)
             .setTitle(R.string.chat_diag_title)
             .setMessage(message)
@@ -492,6 +492,50 @@ class ChatActivity : AppCompatActivity() {
         } catch (_: Exception) {
             org.json.JSONObject()
         }
+    }
+
+    /** Read the UDP mesh transport telemetry the Go mesh-sync binary persists
+     *  each cycle (go/meshstats package). Returns an empty JSON object when
+     *  the file is absent (binary not running) or unreadable — the formatter
+     *  then prints zeros, which is the right signal: "the UDP arm is silent". */
+    private fun readMeshStats(): org.json.JSONObject {
+        val paths = EvoliaPaths(File(filesDir, "evolia"))
+        if (!paths.meshStats.exists()) return org.json.JSONObject()
+        return try {
+            org.json.JSONObject(paths.meshStats.readText())
+        } catch (_: Exception) {
+            org.json.JSONObject()
+        }
+    }
+
+    /** Build the Wi-Fi / UDP section appended to the BT diagnostic dialog. The
+     *  whole block lives in code (rather than as one giant format string) so
+     *  the multi-language strings.xml stays small and each row is one i18n key.
+     *  Field names match go/meshstats.Snapshot's JSON layout. */
+    private fun formatUdpDiagnosticSection(s: org.json.JSONObject): String {
+        val throttles = s.optJSONObject("throttle_events") ?: org.json.JSONObject()
+        val receives = s.optJSONObject("receives") ?: org.json.JSONObject()
+        val attacks = s.optJSONObject("attacks_by_flow") ?: org.json.JSONObject()
+        val blockAtk = attacks.optJSONObject("blocks") ?: org.json.JSONObject()
+        val chatAtk = attacks.optJSONObject("chat") ?: org.json.JSONObject()
+        return getString(R.string.chat_diag_udp_section).format(
+            s.optLong("sends_ok"),
+            s.optLong("sends_fail"),
+            s.optInt("peers_cold"),
+            s.optInt("peers_known"),
+            throttles.optLong("egress"),
+            throttles.optLong("ingress_defense"),
+            throttles.optLong("cold_skipped"),
+            receives.optLong("blocks"),
+            receives.optLong("chat"),
+            blockAtk.optLong("injection"),
+            blockAtk.optLong("bad_signature"),
+            blockAtk.optLong("forged_work"),
+            blockAtk.optLong("malformed"),
+            chatAtk.optLong("injection"),
+            chatAtk.optLong("malformed"),
+            s.optDouble("defense_level", 0.0),
+        )
     }
 
     private fun hasBluetoothConnectPermission(): Boolean {

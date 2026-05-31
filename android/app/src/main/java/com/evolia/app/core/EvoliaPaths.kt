@@ -34,6 +34,13 @@ class EvoliaPaths(val home: File) {
     val chatFingerprint: File get() = File(home, "evolia_chat_fingerprint.txt")
     val chatContacts: File get() = File(home, "evolia_chat_contacts.json")
     val chatBtStats: File get() = File(home, "evolia_chat_bt_stats.json")
+    // UDP mesh transport telemetry, written each cycle by the Go mesh-sync
+    // binary (go/meshstats package). Same JSON-snapshot pattern as chatBtStats
+    // but for the WiFi/UDP side: sends_ok, sends_fail, peers_cold,
+    // throttle_events, attacks_by_flow, receives, defense_level — the
+    // diagnostic dialog reads this to show "is the UDP arm of the mesh
+    // actually moving anything?".
+    val meshStats: File get() = File(home, "evolia_mesh_stats.json")
 
     companion object {
         const val CONVERSION_RATE_V_TO_SAT = 100_000
