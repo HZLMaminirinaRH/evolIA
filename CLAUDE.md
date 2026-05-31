@@ -46,8 +46,13 @@ go/                      Go module `evolia` — networking
   cmd/mesh-sync/         binary: emit local value (signed) + relay over UDP; receive/verify peer
                          blocks on :5555, feeding the adaptive defense; also relays opaque
                          chat envelopes (drain outbox -> peers, receive on :5556 -> inbox)
-  cmd/evolia-net/        binary: LAN peer discovery -> evolia_peers.json
+  cmd/evolia-net/        binary: LAN peer discovery on :5557 -> evolia_peers.json
   cmd/evolia-bridge/     binary: HTTP API (/block, /sync, /mesh/total_v, /health, /defense)
+
+  UDP port allocation (strict, no collision):
+    :5555  mesh-sync block intake (value sync, signed blocks + PoW)
+    :5556  mesh-sync chat intake  (opaque E2E envelopes, never decrypted)
+    :5557  evolia-net discovery   (LAN announces broadcast, dedicated port)
 python/                  services that produce/consume the shared state
   evolia_paths.py        shared EVOLIA_HOME layout (Python mirror of evolia-core)
   evolia_sensors.py      sensor readers (termux-api), graceful fallback off-device

@@ -1,9 +1,15 @@
 // Command evolia-net discovers LAN peers and records them for mesh-sync.
 //
-// It listens for announce datagrams on UDP :5556 and periodically broadcasts
-// its own announce to 255.255.255.255:5556. Each discovered peer is written to
+// It listens for announce datagrams on UDP :5557 and periodically broadcasts
+// its own announce to 255.255.255.255:5557. Each discovered peer is written to
 // evolia_peers.json (host only); mesh-sync reads that file and dials peers on
 // the block port (5555). Standard library only.
+//
+// Port allocation (no collision with mesh-sync):
+//
+//	:5555 — mesh-sync block intake (value sync)
+//	:5556 — mesh-sync chat intake  (opaque E2E envelopes)
+//	:5557 — evolia-net discovery   (LAN announces)
 package main
 
 import (
@@ -19,8 +25,8 @@ import (
 )
 
 const (
-	discoveryAddr = ":5556"
-	broadcastAddr = "255.255.255.255:5556"
+	discoveryAddr = ":5557"
+	broadcastAddr = "255.255.255.255:5557"
 	announceEvery = 30 * time.Second
 )
 

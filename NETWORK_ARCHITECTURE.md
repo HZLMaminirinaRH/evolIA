@@ -241,16 +241,41 @@ $EVOLIA_HOME/
 
 ## ✅ **Checklist - Phase 2 Effective**
 
-- [ ] Port 5557 alloué à la découverte (fix collision)
-- [ ] `evolia-net` écoute sur `:5557` et broadcast sur `:5557`
-- [ ] `mesh-sync` continue `:5555` (valeur) et `:5556` (chat)
-- [ ] Chat opaque routing (no decrypt in Go)
-- [ ] Defense gate + throttle par IP
-- [ ] Dedup par message ID (survive restart)
-- [ ] Logs JSON pour debugging
-- [ ] Android APK inclut les 3 binaires (.so)
-- [ ] Cycle 5s : emit + relay + decay
-- [ ] Peers viennent de EVOLIA_PEERS (config) + evolia-net discovery
+- [x] **Port 5557 alloué à la découverte (fix collision)** ✅ commit (this PR)
+- [x] **`evolia-net` écoute sur `:5557` et broadcast sur `:5557`** ✅
+- [x] **`mesh-sync` continue `:5555` (valeur) et `:5556` (chat)** ✅
+- [x] **Chat opaque routing (no decrypt in Go)** ✅ (existing `go/chat`)
+- [x] **Defense gate + throttle par IP** ✅ (existing `go/defense`)
+- [x] **Dedup par message ID (survive restart)** ✅ (existing `chat.LoadSeenIDs`)
+- [x] **Logs JSON pour debugging** ✅ (existing `newLogger`)
+- [x] **Android APK inclut les 3 binaires (.so)** ✅ commit eba3170 (CI NDK fix)
+- [x] **Cycle 5s : emit + relay + decay** ✅ (existing `cycleInterval()`)
+- [x] **Peers viennent de EVOLIA_PEERS (config) + evolia-net discovery** ✅
+
+## 📊 **Monitoring sur device**
+
+Une fois le nouvel APK installé, vérifier les logs dans `$EVOLIA_HOME/` :
+
+```bash
+# Logs mesh-sync (blocs valeur + chat)
+tail -f $EVOLIA_HOME/evolia_mesh_sync.log
+
+# Logs evolia-net (découverte)
+tail -f $EVOLIA_HOME/evolia_network.log
+
+# Peers découverts
+cat $EVOLIA_HOME/evolia_peers.json
+
+# Stats Bluetooth (déjà persistées)
+cat $EVOLIA_HOME/evolia_chat_bt_stats.json
+```
+
+**Indicateurs de bon fonctionnement** :
+- `evolia_network.log` montre `peer discovered: <id> @ <ip>`
+- `evolia_peers.json` contient au moins un peer
+- `evolia_mesh_sync.log` montre `sent device=<self> -> <peer>:5555`
+- Sur le destinataire : `evolia_mesh_sync.log` montre `received recv_<id>.json from <ip>`
+- Pour le chat : `chat sent -> <ip>:5556` (émetteur) et `chat received id=<msg> from <ip>` (receveur)
 
 ---
 

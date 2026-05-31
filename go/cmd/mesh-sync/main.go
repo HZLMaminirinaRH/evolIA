@@ -1,4 +1,5 @@
-// Command mesh-sync emits this node's value to peers and receives theirs.
+// Command mesh-sync emits this node's value to peers and receives theirs, and
+// relays the app's opaque end-to-end chat envelopes alongside.
 //
 // Each cycle it emits the local value (read from evolia_identity_state.json) as
 // a signed block to configured peers over UDP (EVOLIA_PEERS, comma-separated
@@ -6,8 +7,17 @@
 // the cognitive params so the formula co-evolves across the mesh. It also
 // relays any externally-dropped vault block once. A UDP listener on :5555
 // receives peer blocks, verifies their HMAC signature (shared EVOLIA_MESH_KEY),
-// and stores them — feeding the adaptive defense when input is hostile. Events
-// are written to evolia_mesh_sync.log. Standard library only.
+// and stores them — feeding the adaptive defense when input is hostile. A
+// second UDP listener on :5556 receives opaque chat envelopes, routes those
+// addressed to this node into the app's inbox (and never decrypts the body —
+// E2E lives in the app), while each cycle drains the app's outbox to peers on
+// peer:5556. Events are written to evolia_mesh_sync.log. Standard library only.
+//
+// Port allocation (no collision with evolia-net):
+//
+//	:5555 — mesh-sync block intake (value sync)
+//	:5556 — mesh-sync chat intake  (opaque E2E envelopes)
+//	:5557 — evolia-net discovery   (LAN announces, dedicated port)
 package main
 
 import (
