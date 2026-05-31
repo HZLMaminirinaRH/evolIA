@@ -92,8 +92,20 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      - uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r26d
       - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
+      - name: Cross-compile Go binaries into jniLibs (arm64)
+        working-directory: ${{ github.workspace }}
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+        run: bash scripts/build-android-binaries.sh
       - name: Unit tests (pure value core)
         run: ./gradlew :app:testDebugUnitTest --no-daemon
       - name: Assemble debug APK

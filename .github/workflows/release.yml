@@ -39,6 +39,20 @@ jobs:
           java-version: '17'
           cache: gradle
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r26d
+
+      - name: Cross-compile Go binaries into jniLibs (arm64)
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+        run: bash scripts/build-android-binaries.sh
+
       - name: Decode signing keystore
         run: echo "${{ secrets.EVOLIA_KEYSTORE_BASE64 }}" | base64 -d > "${RUNNER_TEMP}/evolia.keystore"
 
