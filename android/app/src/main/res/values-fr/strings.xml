@@ -32,7 +32,7 @@
     <string name="msg_auth_configured">Authentification configurée.</string>
     <string name="msg_biometric_unavailable">Biométrie indisponible — étape ignorée.</string>
     <string name="msg_action_recorded">Action enregistrée (sera prise au prochain cycle).</string>
-    <string name="msg_conversion">Conversion V=%.2f → %d SAT (en attente)</string>
+    <string name="msg_conversion">Conversion V=%1$.2f → %2$d SAT (en attente)</string>
     <string name="msg_stopped">Arrêté.</string>
 
     <!-- Peer chat -->

@@ -273,16 +273,14 @@ class EvoliaService : Service() {
     ): Boolean {
         if (amountBtce <= 0.0) return false
         val journal = File(paths.home, "evolia_local_transfers.jsonl")
-        // Already credited? (idempotency guard against best-effort re-delivery)
-        if (journal.exists()) {
-            journal.forEachLine { line ->
-                if (line.contains("\"envelope_id\":\"$envelopeId\"") &&
-                    line.contains("\"status\":\"received\"")
-                ) {
-                    return false
-                }
-            }
+        // Already credited? (idempotency guard against best-effort re-delivery).
+        // Use a plain readLines().any { } so there is no non-local return out of an
+        // inline lambda from a @Synchronized method.
+        val alreadyCredited = journal.exists() && journal.readLines().any { line ->
+            line.contains("\"envelope_id\":\"$envelopeId\"") &&
+                line.contains("\"status\":\"received\"")
         }
+        if (alreadyCredited) return false
         val value = EvoliaValue(paths)
         value.load()
         val current = Dashboard.collect(paths).personal.totalV

@@ -6,7 +6,10 @@ import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothServerSocket
 import android.bluetooth.BluetoothSocket
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.content.ContextCompat
@@ -19,6 +22,7 @@ import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.io.IOException
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -85,6 +89,16 @@ class BluetoothMeshTransport(
     @Volatile private var serverSocket: BluetoothServerSocket? = null
     @Volatile private var running = false
 
+    // Peers found by active discovery (BluetoothDevice keyed by address), in
+    // addition to the bonded set. The insecure RFCOMM transport does not actually
+    // need an OS bond — confidentiality/authenticity is our own E2E crypto — so a
+    // device seen in a scan is a perfectly valid relay target even if Android has
+    // dropped (or never created) the pairing. This is what makes delivery survive
+    // the "pairing keeps getting lost between two phones" problem. Concurrent: the
+    // discovery receiver writes, the relay tick reads.
+    private val discovered = ConcurrentHashMap<String, BluetoothDevice>()
+    @Volatile private var discoveryReceiver: BroadcastReceiver? = null
+
     /** Usable only with a present, enabled radio and the connect permission. */
     fun isAvailable(): Boolean = adapter?.isEnabled == true && hasConnectPermission()
 
@@ -93,16 +107,95 @@ class BluetoothMeshTransport(
         if (running || !isAvailable()) return
         running = true
         this.scope = scope
+        registerDiscovery()
         scope.launch(Dispatchers.IO) { acceptLoop() }
     }
 
     fun stop() {
         running = false
+        unregisterDiscovery()
+        try {
+            adapter?.cancelDiscovery()
+        } catch (_: SecurityException) {
+        }
         try {
             serverSocket?.close() // unblocks accept()
         } catch (_: IOException) {
         }
         serverSocket = null
+    }
+
+    /** Register a receiver for discovery results and bond-state changes, then
+     *  kick off a scan. A device FOUND during a scan is remembered as a relay
+     *  candidate (no OS bond required — the link is insecure-by-design and our
+     *  crypto is end-to-end). A bond that drops to NONE is re-requested so the
+     *  user's manual pairing, when they do use it, is kept alive instead of
+     *  silently evaporating. Degrades to a no-op without the scan permission. */
+    private fun registerDiscovery() {
+        if (discoveryReceiver != null) return
+        if (!hasScanPermission()) return
+        val rx = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                when (intent.action) {
+                    BluetoothDevice.ACTION_FOUND -> {
+                        val dev: BluetoothDevice? =
+                            intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+                        if (dev != null && canRunEvolia(dev)) discovered[dev.address] = dev
+                    }
+                    BluetoothAdapter.ACTION_DISCOVERY_FINISHED -> {
+                        // Keep scanning periodically while we're running, so a peer
+                        // that powers on later is still found.
+                        if (running) startScan()
+                    }
+                    BluetoothDevice.ACTION_BOND_STATE_CHANGED -> {
+                        val state = intent.getIntExtra(
+                            BluetoothDevice.EXTRA_BOND_STATE, BluetoothDevice.BOND_NONE,
+                        )
+                        val dev: BluetoothDevice? =
+                            intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+                        // A bond we had has dropped: re-request it for a real peer so
+                        // a manual pairing the user made does not keep evaporating.
+                        if (state == BluetoothDevice.BOND_NONE && dev != null && canRunEvolia(dev)) {
+                            try {
+                                dev.createBond()
+                            } catch (_: SecurityException) {
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        val filter = IntentFilter().apply {
+            addAction(BluetoothDevice.ACTION_FOUND)
+            addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED)
+            addAction(BluetoothDevice.ACTION_BOND_STATE_CHANGED)
+        }
+        try {
+            context.registerReceiver(rx, filter)
+            discoveryReceiver = rx
+            startScan()
+        } catch (_: SecurityException) {
+        }
+    }
+
+    private fun unregisterDiscovery() {
+        val rx = discoveryReceiver ?: return
+        try {
+            context.unregisterReceiver(rx)
+        } catch (_: IllegalArgumentException) {
+            // already unregistered — safe to ignore
+        }
+        discoveryReceiver = null
+    }
+
+    private fun startScan() {
+        if (!hasScanPermission()) return
+        try {
+            val a = adapter ?: return
+            if (a.isDiscovering) return
+            a.startDiscovery()
+        } catch (_: SecurityException) {
+        }
     }
 
     private fun acceptLoop() {
@@ -175,23 +268,34 @@ class BluetoothMeshTransport(
      *  outbox, so the two transports never race to consume the same message. */
     fun relayToPeers() {
         if (!isAvailable()) return
-        val devices = try {
+        val bonded = try {
             adapter?.bondedDevices?.toList().orEmpty()
         } catch (_: SecurityException) {
+            emptyList()
+        }
+        // Candidates = bonded peers + peers seen by active discovery, de-duplicated
+        // by address. Including discovered (non-bonded) peers is what lets delivery
+        // survive Android dropping the pairing between two phones: the insecure
+        // RFCOMM link never needed the bond in the first place.
+        val byAddr = LinkedHashMap<String, BluetoothDevice>()
+        for (d in bonded) if (canRunEvolia(d)) byAddr[d.address] = d
+        for (d in discovered.values) if (canRunEvolia(d)) byAddr.putIfAbsent(d.address, d)
+        val candidates = byAddr.values.toList()
+        // No candidate yet — kick a scan so one appears on a later tick, and leave
+        // the queue intact (nothing is dropped).
+        if (candidates.isEmpty()) {
+            startScan()
             return
         }
-        if (devices.isEmpty()) return // no bonded peer -> leave the BT queue for a later tick
-        // Only attempt the RFCOMM connect to devices that can plausibly run
-        // evolIA. The bonded set routinely includes a keyboard, a mouse, a
-        // headset — hammering an insecure RFCOMM connect with the evolIA UUID at
-        // an HID/audio peripheral never succeeds and can congest the BT stack so
-        // even the real phone peer fails to connect (the live "14 attempts, 0
-        // successes" the user hit with a paired keyboard + mouse in the set).
-        val candidates = devices.filter { canRunEvolia(it) }
-        if (candidates.isEmpty()) return // only peripherals bonded -> nothing to do
         val msgs = store.drainBtOutbox()
         if (msgs.isEmpty()) return
 
+        // A scan in progress sharply slows an outgoing connect; pause it while we
+        // push, then it resumes on the next DISCOVERY_FINISHED.
+        try {
+            adapter?.cancelDiscovery()
+        } catch (_: SecurityException) {
+        }
         val frames = msgs.map { it.toJson().toByteArray(Charsets.UTF_8) }
         var deliveredToAny = false
         for (device in candidates) {
@@ -339,6 +443,17 @@ class BluetoothMeshTransport(
         return ContextCompat.checkSelfPermission(
             context,
             Manifest.permission.BLUETOOTH_CONNECT,
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    /** Active discovery needs BLUETOOTH_SCAN on API 31+ (and location pre-31, which
+     *  the manifest already requests). Absent it, discovery is a no-op and we fall
+     *  back to the bonded set only. */
+    private fun hasScanPermission(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return true
+        return ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.BLUETOOTH_SCAN,
         ) == PackageManager.PERMISSION_GRANTED
     }
 
