@@ -151,6 +151,12 @@ class ChatActivity : AppCompatActivity() {
         // the user to switch on whichever radio is off — apps can't toggle them
         // silently on modern Android, so we point at the right settings screen.
         promptEnableRadiosIfNeeded()
+        // Opened from MainActivity's "diagnose transport" shortcut: pop the
+        // diagnostic dialog right away so the user doesn't have to scroll past
+        // the contact list to find the button.
+        if (intent.getBooleanExtra(EXTRA_OPEN_DIAGNOSTIC, false)) {
+            showTransportDiagnostic()
+        }
     }
 
     override fun onResume() {
@@ -454,7 +460,7 @@ class ChatActivity : AppCompatActivity() {
             stats.optLong("frames_received"),
             stats.optLong("intake_rejections"),
             outboxPending,
-        ) + formatUdpDiagnosticSection(readMeshStats())
+        ) + formatScanDiagnosticSection(stats) + formatUdpDiagnosticSection(readMeshStats())
         AlertDialog.Builder(this)
             .setTitle(R.string.chat_diag_title)
             .setMessage(message)
@@ -473,6 +479,22 @@ class ChatActivity : AppCompatActivity() {
         } catch (_: Exception) {
             org.json.JSONObject()
         }
+    }
+
+    /** Build the SCAN / DISCOVERY section appended between the BT stats and the
+     *  UDP stats. Reads the snapshot the BluetoothMeshTransport heart-beats into
+     *  chat_bt_stats.json each tick, so it reflects live state (permission grants,
+     *  bond changes, scan results) without needing to bind to the service. */
+    private fun formatScanDiagnosticSection(s: org.json.JSONObject): String {
+        val on = getString(R.string.chat_diag_on)
+        val off = getString(R.string.chat_diag_off)
+        return getString(R.string.chat_diag_scan_section).format(
+            if (s.optBoolean("scan_permission", false)) on else off,
+            if (s.optBoolean("is_discovering", false)) on else off,
+            s.optInt("discovered_count"),
+            s.optInt("discovered_evolia_candidates"),
+            s.optInt("connection_targets"),
+        )
     }
 
     /** Read the UDP mesh transport telemetry the Go mesh-sync binary persists
@@ -550,7 +572,8 @@ class ChatActivity : AppCompatActivity() {
 
     private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
 
-    private companion object {
-        const val REFRESH_MS = 4000L
+    companion object {
+        const val EXTRA_OPEN_DIAGNOSTIC = "com.evolia.app.OPEN_DIAGNOSTIC"
+        private const val REFRESH_MS = 4000L
     }
 }

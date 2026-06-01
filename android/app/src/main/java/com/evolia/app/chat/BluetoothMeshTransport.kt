@@ -271,6 +271,11 @@ class BluetoothMeshTransport(
      *  This drains the dedicated BT queue (chatOutboxBt), not the shared one — the
      *  Go binary owns the UDP outbox, so the two transports never race. */
     fun relayToPeers(): Int {
+        // Persist a fresh stats snapshot every tick — the discovery/targets
+        // metrics change without any counter being incremented (scan permission
+        // grant, BOND_STATE flips, a device appearing in or leaving range), so
+        // they need a heartbeat write the diagnostic can read.
+        persistStats()
         if (!isAvailable()) return 0
         val bonded = try {
             adapter?.bondedDevices?.toList().orEmpty()
@@ -426,6 +431,46 @@ class BluetoothMeshTransport(
         }
     }
 
+    /** Devices found by active discovery this session that the relay considers a
+     *  plausible evolIA peer (post canRunEvolia filter). What the diagnostic shows
+     *  as "scan candidates" — non-empty = the scan path is working even if no
+     *  bonded phone is present. */
+    fun discoveredEvoliaCandidates(): List<String> = discovered.values
+        .filter { canRunEvolia(it) }
+        .map {
+            val name = try { it.name ?: "?" } catch (_: SecurityException) { "?" }
+            "$name (${it.address})"
+        }
+
+    /** Devices the relay would actually try to connect to right now: bonded peers
+     *  that pass canRunEvolia ∪ discovered candidates. What the diagnostic shows
+     *  as "Targets" — the single number that explains "Tentatives connect = 0":
+     *  a 0 here means relayToPeers() has nothing to dial, end of story. */
+    fun connectionTargetsCount(): Int {
+        if (!isAvailable()) return 0
+        val byAddr = HashSet<String>()
+        try {
+            adapter?.bondedDevices?.forEach { if (canRunEvolia(it)) byAddr.add(it.address) }
+        } catch (_: SecurityException) {
+        }
+        for (d in discovered.values) if (canRunEvolia(d)) byAddr.add(d.address)
+        return byAddr.size
+    }
+
+    /** True if the adapter is mid-scan right now (a one-shot snapshot — the user
+     *  may have caught it between two passes). Useful to tell "scan never ran"
+     *  apart from "scan ran but found nothing yet". */
+    fun isDiscovering(): Boolean = try {
+        adapter?.isDiscovering == true
+    } catch (_: SecurityException) {
+        false
+    }
+
+    /** True if the relay holds the BLUETOOTH_SCAN runtime permission needed for
+     *  active discovery (API 31+). Withheld -> discovery silently no-ops, which
+     *  the diagnostic must surface so the user knows what to grant. */
+    fun canScan(): Boolean = hasScanPermission()
+
     private fun persistStats() {
         val p = paths ?: return
         try {
@@ -436,6 +481,15 @@ class BluetoothMeshTransport(
                 .put("connect_successes", connectSuccesses.get())
                 .put("accept_count", acceptCount.get())
                 .put("intake_rejections", intakeRejections.get())
+                // Discovery + targeting snapshot, so the diagnostic can answer
+                // "why is connect_attempts = 0 ?" without guessing: scan permission,
+                // is a scan running, how many devices have been discovered, how
+                // many are actual relay targets (bonded ∪ discovered, post filter).
+                .put("scan_permission", canScan())
+                .put("is_discovering", isDiscovering())
+                .put("discovered_count", discovered.size)
+                .put("discovered_evolia_candidates", discoveredEvoliaCandidates().size)
+                .put("connection_targets", connectionTargetsCount())
             p.home.mkdirs()
             p.chatBtStats.writeText(j.toString())
         } catch (_: Exception) {

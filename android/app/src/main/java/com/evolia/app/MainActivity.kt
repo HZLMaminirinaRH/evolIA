@@ -103,6 +103,15 @@ class MainActivity : AppCompatActivity() {
             text = getString(R.string.btn_chat)
             setOnClickListener { startActivity(Intent(this@MainActivity, ChatActivity::class.java)) }
         }
+        val diagnoseTransport = Button(this).apply {
+            text = getString(R.string.chat_diag_button)
+            setOnClickListener {
+                startActivity(
+                    Intent(this@MainActivity, ChatActivity::class.java)
+                        .putExtra(ChatActivity.EXTRA_OPEN_DIAGNOSTIC, true),
+                )
+            }
+        }
         val compass = Button(this).apply {
             text = getString(R.string.btn_compass)
             setOnClickListener { startActivity(Intent(this@MainActivity, CompassActivity::class.java)) }
@@ -167,6 +176,7 @@ class MainActivity : AppCompatActivity() {
                 addView(receive)
                 addView(chainConfig)
                 addView(chat)
+                addView(diagnoseTransport)
                 addView(compass)
                 addView(refresh)
                 addView(status, LinearLayout.LayoutParams(
