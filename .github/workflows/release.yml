@@ -18,6 +18,13 @@ on:
         description: 'Existing tag to build and attach the signed APK to (e.g. v0.1.0)'
         required: true
 
+# Opt-in to Node.js 24 ahead of GitHub's 2026-06-16 forced switch (see ci.yml
+# for the rationale). setup-go@v5 and the NDK setup action are still bundled
+# on Node 20 today; this env-var keeps them running until Phase B bumps each
+# action to a version that ships on Node 24 natively.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 permissions:
   contents: write
 

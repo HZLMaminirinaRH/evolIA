@@ -4,6 +4,13 @@ on:
   push:
   pull_request:
 
+# Opt-in to Node.js 24 ahead of GitHub's 2026-06-16 forced switch, so any
+# action still bundled on Node 20 runs on Node 24 today instead of breaking
+# on the cut-off. Safe to remove once every action below is pinned to a
+# version that already ships on Node 24 (Phase B).
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 jobs:
   rust:
     name: Rust (security spine)
