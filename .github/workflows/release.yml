@@ -49,6 +49,7 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version: '1.24'
+          cache: false # stdlib-only module, no go.sum — nothing to cache
 
       - uses: nttld/setup-ndk@v1
         id: setup-ndk

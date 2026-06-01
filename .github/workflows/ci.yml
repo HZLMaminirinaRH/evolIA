@@ -43,6 +43,12 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version: '1.24'
+          # No cache: the module is stdlib-only (go.mod has zero require lines and
+          # there is no go.sum), so the dependency cache has nothing to store and
+          # setup-go's default cache step only logs "Dependencies file is not
+          # found … Supported file pattern: go.mod" because it probes the repo
+          # root, not go/. Disabling it removes that noise with no build cost.
+          cache: false
       - name: Format check
         run: test -z "$(gofmt -l .)"
       - name: Vet
@@ -102,6 +108,7 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version: '1.24'
+          cache: false # stdlib-only module, no go.sum — see the go job
       - uses: nttld/setup-ndk@v1
         id: setup-ndk
         with:
@@ -118,7 +125,7 @@ jobs:
       - name: Assemble debug APK
         run: ./gradlew :app:assembleDebug --no-daemon
       - name: Upload debug APK
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         if: always()
         with:
           name: app-debug.apk
