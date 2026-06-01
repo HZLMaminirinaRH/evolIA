@@ -10,6 +10,7 @@ import android.content.Intent
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.evolia.app.chain.ChainAnchor
@@ -153,10 +154,15 @@ class EvoliaService : Service() {
         )
         bluetoothChat = transport
         transport.start(scope)
-        // Carry queued envelopes to in-range bonded peers each cycle, in step with
-        // the Go relay's cadence (the receive side runs continuously).
+        // Carry queued envelopes to in-range peers each cycle, in step with the Go
+        // relay's cadence (the receive side runs continuously). relayToPeers()
+        // answers how many peers it reached this tick; we log a tick that actually
+        // delivered so a working relay is visible in logcat (a cycle that drained
+        // messages but reached nobody stays silent) — the value is used, not
+        // swallowed, mirroring the Go relay's reached/total log line.
         while (isActive) {
-            transport.relayToPeers()
+            val reached = transport.relayToPeers()
+            if (reached > 0) Log.i(TAG, "bluetooth relay reached $reached peer(s)")
             transport.decayIfQuiet()
             delay(CYCLE_MS)
         }
@@ -383,6 +389,7 @@ class EvoliaService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     companion object {
+        private const val TAG = "EvoliaService"
         private const val CHANNEL_ID = "evolia"
         private const val CHAT_CHANNEL_ID = "evolia_chat"
         private const val NOTIF_ID = 1

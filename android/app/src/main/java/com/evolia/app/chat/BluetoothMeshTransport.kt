@@ -262,12 +262,16 @@ class BluetoothMeshTransport(
         }
     }
 
-    /** Drain the Bluetooth outbox and push to in-range bonded peers; re-queue if
-     *  none could be reached so the message is not lost. This drains the dedicated
-     *  BT queue (chatOutboxBt), not the shared one — the Go binary owns the UDP
-     *  outbox, so the two transports never race to consume the same message. */
-    fun relayToPeers() {
-        if (!isAvailable()) return
+    /** Drain the Bluetooth outbox and push to in-range peers (bonded ∪ discovered);
+     *  re-queue if none could be reached so the message is not lost. Returns the
+     *  number of peers a frame batch actually reached (a successful connect+write),
+     *  so the caller can log delivery rather than have it silently swallowed — the
+     *  Kotlin mirror of the Go relayChat's Int return. 0 means nothing left the
+     *  radio this tick (no candidate, empty queue, or every peer out of range).
+     *  This drains the dedicated BT queue (chatOutboxBt), not the shared one — the
+     *  Go binary owns the UDP outbox, so the two transports never race. */
+    fun relayToPeers(): Int {
+        if (!isAvailable()) return 0
         val bonded = try {
             adapter?.bondedDevices?.toList().orEmpty()
         } catch (_: SecurityException) {
@@ -285,10 +289,10 @@ class BluetoothMeshTransport(
         // the queue intact (nothing is dropped).
         if (candidates.isEmpty()) {
             startScan()
-            return
+            return 0
         }
         val msgs = store.drainBtOutbox()
-        if (msgs.isEmpty()) return
+        if (msgs.isEmpty()) return 0
 
         // A scan in progress sharply slows an outgoing connect; pause it while we
         // push, then it resumes on the next DISCOVERY_FINISHED.
@@ -297,11 +301,12 @@ class BluetoothMeshTransport(
         } catch (_: SecurityException) {
         }
         val frames = msgs.map { it.toJson().toByteArray(Charsets.UTF_8) }
-        var deliveredToAny = false
+        var reached = 0
         for (device in candidates) {
-            if (sendFramesTo(device, frames)) deliveredToAny = true
+            if (sendFramesTo(device, frames)) reached++
         }
-        if (!deliveredToAny) store.requeueBtOutbox(msgs)
+        if (reached == 0) store.requeueBtOutbox(msgs)
+        return reached
     }
 
     /** True if a bonded device could plausibly be another evolIA phone, so we
