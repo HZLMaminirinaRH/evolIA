@@ -19,7 +19,7 @@ jobs:
       run:
         working-directory: rust
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
@@ -39,8 +39,8 @@ jobs:
       run:
         working-directory: go
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: '1.24'
       - name: Format check
@@ -59,8 +59,8 @@ jobs:
       run:
         working-directory: python
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
       - name: Compile check
@@ -78,8 +78,8 @@ jobs:
       run:
         working-directory: python
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
       - name: Install web3 + in-process EVM
@@ -94,20 +94,20 @@ jobs:
       run:
         working-directory: android
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version: '1.24'
       - uses: nttld/setup-ndk@v1
         id: setup-ndk
         with:
           ndk-version: r26d
-      - uses: android-actions/setup-android@v3
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: android-actions/setup-android@v4
+      - uses: gradle/actions/setup-gradle@v5
       - name: Cross-compile Go binaries into jniLibs (arm64)
         working-directory: ${{ github.workspace }}
         env:
@@ -118,7 +118,7 @@ jobs:
       - name: Assemble debug APK
         run: ./gradlew :app:assembleDebug --no-daemon
       - name: Upload debug APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: always()
         with:
           name: app-debug.apk
