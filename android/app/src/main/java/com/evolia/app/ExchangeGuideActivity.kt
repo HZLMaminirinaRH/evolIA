@@ -13,6 +13,8 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.evolia.app.core.EvoliaPaths
 import com.evolia.app.ui.copyrightFooter
+import com.evolia.app.ui.dp
+import com.evolia.app.ui.setPaddingDp
 import java.io.File
 
 /**
@@ -41,7 +43,7 @@ class ExchangeGuideActivity : AppCompatActivity() {
         val column = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.START
-            setPadding(48, 48, 48, 48)
+            setPaddingDp(20, 20, 20, 20)
         }
         column.addView(paragraph(getString(R.string.guide_body)))
         section(column, R.string.guide_s1_title, R.string.guide_s1_body)
@@ -52,7 +54,7 @@ class ExchangeGuideActivity : AppCompatActivity() {
             TextView(this).apply {
                 textSize = 13f
                 alpha = 0.6f
-                setPadding(0, 40, 0, 4)
+                setPaddingDp(0, 16, 0, 2)
                 text = getString(R.string.guide_address_label)
             },
         )
@@ -81,7 +83,7 @@ class ExchangeGuideActivity : AppCompatActivity() {
             TextView(this).apply {
                 textSize = 17f
                 setTypeface(typeface, Typeface.BOLD)
-                setPadding(0, 36, 0, 8)
+                setPaddingDp(0, 14, 0, 3)
                 text = getString(titleRes)
             },
         )
@@ -103,7 +105,7 @@ class ExchangeGuideActivity : AppCompatActivity() {
     // A small indent at the start of each paragraph (blocks split on blank
     // lines), so the justified body reads like a printed page.
     private fun indentParagraphs(content: String): CharSequence {
-        val indent = (22 * resources.displayMetrics.density).toInt()
+        val indent = dp(22)
         val out = SpannableStringBuilder()
         val blocks = content.split("\n\n")
         blocks.forEachIndexed { i, block ->

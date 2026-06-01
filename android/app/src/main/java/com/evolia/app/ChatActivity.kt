@@ -31,6 +31,7 @@ import com.evolia.app.ui.TransferNotify
 import com.evolia.app.ui.copyToClipboard
 import com.evolia.app.ui.copyrightFooter
 import com.evolia.app.ui.sanitizeForDisplay
+import com.evolia.app.ui.setPaddingDp
 import org.json.JSONObject
 import java.io.File
 
@@ -129,7 +130,7 @@ class ChatActivity : AppCompatActivity() {
         setContentView(
             LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(40, 60, 40, 40)
+                setPaddingDp(16, 24, 16, 16)
                 addView(myId)
                 addView(shareId)
                 addView(addContact)
@@ -312,7 +313,7 @@ class ChatActivity : AppCompatActivity() {
         val fingerprintLabel = TextView(this).apply {
             textSize = 13f
             alpha = 0.7f
-            setPadding(0, 16, 0, 0)
+            setPaddingDp(0, 6, 0, 0)
             text = getString(R.string.chat_contact_fingerprint_pending)
         }
         bundle.addTextChangedListener(object : TextWatcher {

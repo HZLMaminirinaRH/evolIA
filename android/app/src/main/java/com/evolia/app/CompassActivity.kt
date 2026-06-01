@@ -17,6 +17,7 @@ import androidx.core.content.ContextCompat
 import com.evolia.app.sensors.CompassMath
 import com.evolia.app.sensors.CompassView
 import com.evolia.app.ui.copyrightFooter
+import com.evolia.app.ui.setPaddingDp
 
 /**
  * Live sensor panel ("SENSORS"): a visual compass plus the readings that feed V.
@@ -80,7 +81,7 @@ class CompassActivity : AppCompatActivity(), SensorEventListener {
         setContentView(
             LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(40, 40, 40, 40)
+                setPaddingDp(16, 16, 16, 16)
                 addView(readings)
                 addView(
                     compass,

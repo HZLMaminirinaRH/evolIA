@@ -45,6 +45,7 @@ import com.evolia.app.ui.TransferNotify
 import com.evolia.app.ui.copyToClipboard
 import com.evolia.app.ui.copyrightFooter
 import com.evolia.app.ui.sanitizeForDisplay
+import com.evolia.app.ui.setPaddingDp
 import org.json.JSONObject
 import java.io.File
 
@@ -158,7 +159,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(
             LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(40, 80, 40, 40)
+                setPaddingDp(16, 32, 16, 16)
                 addView(stop)
                 addView(recordVideo)
                 addView(convertBtc)
@@ -505,7 +506,7 @@ class MainActivity : AppCompatActivity() {
         }
         val form = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(48, 24, 48, 0)
+            setPaddingDp(20, 10, 20, 0)
             addView(toInput)
             addView(amountInput)
         }
@@ -558,7 +559,7 @@ class MainActivity : AppCompatActivity() {
         }
         val form = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(48, 24, 48, 0)
+            setPaddingDp(20, 10, 20, 0)
             addView(amountInput)
         }
         AlertDialog.Builder(this)
@@ -706,7 +707,7 @@ class MainActivity : AppCompatActivity() {
         }
         val form = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(48, 24, 48, 0)
+            setPaddingDp(20, 10, 20, 0)
             addView(rpcInput)
             addView(chainIdInput)
         }
