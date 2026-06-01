@@ -460,7 +460,9 @@ class ChatActivity : AppCompatActivity() {
             stats.optLong("frames_received"),
             stats.optLong("intake_rejections"),
             outboxPending,
-        ) + formatScanDiagnosticSection(stats) + formatUdpDiagnosticSection(readMeshStats())
+        ) + formatScanDiagnosticSection(stats) +
+            formatTransferDiagnosticSection() +
+            formatUdpDiagnosticSection(readMeshStats())
         AlertDialog.Builder(this)
             .setTitle(R.string.chat_diag_title)
             .setMessage(message)
@@ -495,6 +497,80 @@ class ChatActivity : AppCompatActivity() {
             s.optInt("discovered_evolia_candidates"),
             s.optInt("connection_targets"),
         )
+    }
+
+    /** Aggregate BTC-e transfer outcomes from the two journals this device keeps,
+     *  so the diagnostic answers "did my transfer land?" without scrolling logs.
+     *
+     *  Two journals are read READ-ONLY (zero risk of altering security/economic
+     *  state):
+     *    - evolia_local_transfers.jsonl : off-chain promises (status=local_promise
+     *      on send, status=received once EvoliaService credits the receiver)
+     *    - evolia_transfer_history.jsonl : on-chain transfers (status=success when
+     *      the receipt confirms, failed on error, local when no RPC was reachable)
+     *
+     *  Future-proof: every field is read via optString / optDouble with safe
+     *  defaults, and the whole pass is in a try/catch — so adding, renaming or
+     *  removing a JSON field in a future schema change can NEVER crash the dialog,
+     *  it just renders 0 for the missing piece. No new dependency: only the
+     *  already-imported JSONObject + File.readLines().
+     */
+    private fun formatTransferDiagnosticSection(): String {
+        val paths = EvoliaPaths(File(filesDir, "evolia"))
+        var offSent = 0; var offSentTotal = 0.0
+        var offRecv = 0; var offRecvTotal = 0.0
+        var onSuccess = 0; var onSuccessTotal = 0.0
+        var onFailed = 0
+        var onLocal = 0
+        try {
+            val local = File(paths.home, "evolia_local_transfers.jsonl")
+            if (local.exists()) {
+                local.forEachLine { line ->
+                    val o = parseLineSafe(line) ?: return@forEachLine
+                    val amt = o.optDouble("amount_btce", 0.0)
+                    when (o.optString("status")) {
+                        "local_promise" -> { offSent++; offSentTotal += amt }
+                        "received" -> { offRecv++; offRecvTotal += amt }
+                    }
+                }
+            }
+            val onchain = paths.transferHistory
+            if (onchain.exists()) {
+                onchain.forEachLine { line ->
+                    val o = parseLineSafe(line) ?: return@forEachLine
+                    if (o.optString("mode") != "transfer") return@forEachLine
+                    val amt = o.optDouble("amount_btce", 0.0)
+                    when (o.optString("status")) {
+                        "success" -> { onSuccess++; onSuccessTotal += amt }
+                        "failed" -> onFailed++
+                        "local" -> onLocal++
+                    }
+                }
+            }
+        } catch (_: Exception) {
+            // Best-effort. A corrupt or unreadable journal must not crash the
+            // diagnostic — the section just renders the counts we did manage to
+            // tally before the throw.
+        }
+        return getString(R.string.chat_diag_transfer_section).format(
+            offSent, offSentTotal,
+            offRecv, offRecvTotal,
+            onSuccess, onSuccessTotal,
+            onFailed,
+            onLocal,
+        )
+    }
+
+    /** Parse one JSONL line tolerantly: a malformed line yields null instead of
+     *  throwing, so a partially-written journal (process killed mid-append) does
+     *  not break the whole tally. */
+    private fun parseLineSafe(line: String): org.json.JSONObject? {
+        if (line.isBlank()) return null
+        return try {
+            org.json.JSONObject(line)
+        } catch (_: Exception) {
+            null
+        }
     }
 
     /** Read the UDP mesh transport telemetry the Go mesh-sync binary persists
