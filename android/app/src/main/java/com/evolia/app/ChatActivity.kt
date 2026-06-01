@@ -27,7 +27,6 @@ import com.evolia.app.chat.ChatStore
 import com.evolia.app.core.ActionQueue
 import com.evolia.app.core.Dashboard
 import com.evolia.app.core.EvoliaPaths
-import com.evolia.app.core.EvoliaValue
 import com.evolia.app.ui.TransferNotify
 import com.evolia.app.ui.copyToClipboard
 import com.evolia.app.ui.copyrightFooter
@@ -273,34 +272,15 @@ class ChatActivity : AppCompatActivity() {
             // ACK is harmless (relay dedups by id).
             manager.sendAck(received.senderFingerprint, received.messageId)
         }
-        // Process incoming offline BTC-e transfers and credit the recipient's balance.
+        // Incoming offline BTC-e transfers are credited by EvoliaService (the
+        // continuously-running component, so a transfer lands even with the chat
+        // screen closed), idempotently. We only SURFACE them here so the open
+        // chat shows the arrival — crediting in two places would double-credit.
         manager.incomingTransfers().forEach { xfer ->
-            try {
-                val paths = EvoliaPaths(File(filesDir, "evolia"))
-                // Add to local balance and record the received transfer.
-                var currentBalance = Dashboard.collect(paths).personal.totalV
-                currentBalance += xfer.amountBtce
-                // Update the value state with the new balance.
-                val stateJson = JSONObject()
-                    .put("total_v", currentBalance)
-                    .put("cycle_count", Dashboard.collect(paths).personal.cycleCount)
-                paths.home.mkdirs()
-                paths.valueState.writeText(stateJson.toString(2))
-
-                val entry = JSONObject()
-                    .put("timestamp", System.currentTimeMillis())
-                    .put("from", xfer.senderFingerprint)
-                    .put("amount_btce", xfer.amountBtce)
-                    .put("status", "received")
-                    .put("mode", "offline")
-                    .put("envelope_id", xfer.messageId)
-                File(paths.home, "evolia_local_transfers.jsonl").appendText(entry.toString() + "\n")
-
-                // Notify receiver of BTC-e arrival.
-                TransferNotify.notifyReceived(this, xfer.amountBtce, xfer.senderFingerprint.take(8), settled = false)
-            } catch (_: Exception) {
-                // Silently skip on record failure; transfer is still in inbox for retry.
-            }
+            sb.append(sanitizeForDisplay(xfer.senderFingerprint.take(8)))
+                .append(" 💸 +")
+                .append(String.format(java.util.Locale.US, "%.2f", xfer.amountBtce))
+                .append(" BTC-e\n")
         }
         sent.forEach { msg ->
             sb.append(msg.display)

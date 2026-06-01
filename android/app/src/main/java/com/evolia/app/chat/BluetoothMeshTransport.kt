@@ -181,15 +181,59 @@ class BluetoothMeshTransport(
             return
         }
         if (devices.isEmpty()) return // no bonded peer -> leave the BT queue for a later tick
+        // Only attempt the RFCOMM connect to devices that can plausibly run
+        // evolIA. The bonded set routinely includes a keyboard, a mouse, a
+        // headset — hammering an insecure RFCOMM connect with the evolIA UUID at
+        // an HID/audio peripheral never succeeds and can congest the BT stack so
+        // even the real phone peer fails to connect (the live "14 attempts, 0
+        // successes" the user hit with a paired keyboard + mouse in the set).
+        val candidates = devices.filter { canRunEvolia(it) }
+        if (candidates.isEmpty()) return // only peripherals bonded -> nothing to do
         val msgs = store.drainBtOutbox()
         if (msgs.isEmpty()) return
 
         val frames = msgs.map { it.toJson().toByteArray(Charsets.UTF_8) }
         var deliveredToAny = false
-        for (device in devices) {
+        for (device in candidates) {
             if (sendFramesTo(device, frames)) deliveredToAny = true
         }
         if (!deliveredToAny) store.requeueBtOutbox(msgs)
+    }
+
+    /** True if a bonded device could plausibly be another evolIA phone, so we
+     *  only spend an RFCOMM connect on a real candidate. Two cheap, offline
+     *  signals (no SDP round-trip needed):
+     *   - the SDP UUID cache (device.uuids) already advertises our APP_UUID, OR
+     *   - the device's major class is not a known non-phone peripheral
+     *     (peripheral=keyboard/mouse, audio/video=headset/speaker, imaging,
+     *     health, toy). A phone/computer/uncategorized device stays a candidate.
+     *  Erring toward "candidate" is safe: a wrong guess just costs one connect
+     *  that fails exactly as before, while a paired keyboard/mouse/headset —
+     *  the actual stack-congestion culprits — are skipped. */
+    private fun canRunEvolia(device: BluetoothDevice): Boolean {
+        try {
+            val uuids = device.uuids
+            if (uuids != null) {
+                for (u in uuids) {
+                    if (u.uuid == APP_UUID) return true // advertises evolIA — definite peer
+                }
+            }
+        } catch (_: SecurityException) {
+            // fall through to the device-class heuristic
+        }
+        return try {
+            when (device.bluetoothClass?.majorDeviceClass) {
+                android.bluetooth.BluetoothClass.Device.Major.PERIPHERAL,
+                android.bluetooth.BluetoothClass.Device.Major.AUDIO_VIDEO,
+                android.bluetooth.BluetoothClass.Device.Major.IMAGING,
+                android.bluetooth.BluetoothClass.Device.Major.HEALTH,
+                android.bluetooth.BluetoothClass.Device.Major.TOY,
+                -> false
+                else -> true // PHONE, COMPUTER, UNCATEGORIZED, or unknown -> try it
+            }
+        } catch (_: SecurityException) {
+            true // can't read the class -> don't exclude a possible peer
+        }
     }
 
     /** Relax the defense one notch on a quiet tick (no hostile frame since the
@@ -201,15 +245,29 @@ class BluetoothMeshTransport(
     }
 
     private fun sendFramesTo(device: BluetoothDevice, frames: List<ByteArray>): Boolean {
-        var socket: BluetoothSocket? = null
         connectAttempts.incrementAndGet()
+        // Discovery, if running, sharply slows or aborts an outgoing connect.
+        try {
+            adapter?.cancelDiscovery()
+        } catch (_: SecurityException) {
+        }
+        // Primary path: connect via the SDP service record for APP_UUID. On some
+        // Android builds / adapters the SDP lookup is flaky and connect() throws
+        // even though the peer's RFCOMM server is up; the channel-1 fallback below
+        // is the well-known reflection workaround for exactly that case.
+        if (writeFramesOver({ device.createInsecureRfcommSocketToServiceRecord(APP_UUID) }, frames)) {
+            return true
+        }
+        return writeFramesOver({ fallbackChannelSocket(device) }, frames)
+    }
+
+    /** Open a socket via [open], connect, stream every frame, close. Returns true
+     *  only if the connect succeeded AND all frames were written. Any failure is
+     *  swallowed (returns false) so the caller can try the next path/peer. */
+    private fun writeFramesOver(open: () -> BluetoothSocket?, frames: List<ByteArray>): Boolean {
+        var socket: BluetoothSocket? = null
         return try {
-            // Discovery, if running, sharply slows or aborts an outgoing connect.
-            try {
-                adapter?.cancelDiscovery()
-            } catch (_: SecurityException) {
-            }
-            socket = device.createInsecureRfcommSocketToServiceRecord(APP_UUID)
+            socket = open() ?: return false
             socket.connect()
             connectSuccesses.incrementAndGet()
             val out = socket.outputStream
@@ -221,16 +279,27 @@ class BluetoothMeshTransport(
             true
         } catch (_: IOException) {
             persistStats()
-            false // peer out of range / not running evolIA — try the next device
+            false // peer out of range / not running evolIA — try the next path/device
         } catch (_: SecurityException) {
             persistStats()
             false
+        } catch (_: ReflectiveOperationException) {
+            false // fallback reflection not available on this build — give up cleanly
         } finally {
             try {
                 socket?.close()
             } catch (_: IOException) {
             }
         }
+    }
+
+    /** Reflection fallback: open an insecure RFCOMM socket on channel 1 directly,
+     *  bypassing the SDP UUID lookup. createInsecureRfcommSocket(int) is hidden
+     *  API but stable across AOSP; if reflection is blocked the caller treats the
+     *  resulting exception as a clean failure. */
+    private fun fallbackChannelSocket(device: BluetoothDevice): BluetoothSocket? {
+        val m = device.javaClass.getMethod("createInsecureRfcommSocket", Int::class.javaPrimitiveType)
+        return m.invoke(device, 1) as? BluetoothSocket
     }
 
     /** Snapshot of every paired Bluetooth device's name + address, so the

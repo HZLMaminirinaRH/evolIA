@@ -43,6 +43,11 @@ object ChatIntake {
         val from = o.optString("from")
         val ts = o.optString("ts")
         val body = o.optString("body")
+        // Preserve the envelope type ("msg"/"ack"/"xfer"); dropping it (the old
+        // bug) silently demoted every inbound transfer promise and ACK to a plain
+        // "msg", so incomingTransfers()/readAcks() never saw them — an offline
+        // BTC-e transfer over Bluetooth could never be credited.
+        val type = o.optString("type", "msg")
         if (id.isEmpty() || to.isEmpty() || from.isEmpty() || body.isEmpty()) {
             return null to Result.REJECTED_MALFORMED
         }
@@ -53,7 +58,7 @@ object ChatIntake {
         ) {
             return null to Result.REJECTED_INJECTION
         }
-        return ChatStore.Wire(id, to, from, ts, body) to Result.STORED
+        return ChatStore.Wire(id, to, from, ts, body, type) to Result.STORED
     }
 
     /** True if an inbound message is for us. Empty myFingerprint accepts all

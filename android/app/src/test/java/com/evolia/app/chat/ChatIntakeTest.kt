@@ -40,6 +40,20 @@ class ChatIntakeTest {
     }
 
     @Test
+    fun envelopeTypeIsPreservedThroughIntake() {
+        // Regression: ChatIntake.parse dropped the "type" field, demoting every
+        // inbound "xfer" (offline BTC-e transfer) and "ack" to a plain "msg", so
+        // incomingTransfers()/readAcks() never saw them and a transfer over
+        // Bluetooth could never be credited. Intake must round-trip the type.
+        val e = Env()
+        val xferWire = ChatStore.Wire("x1", myFp, "ffffffffffffffff", "ts", "sealed", "xfer")
+            .toJson().toByteArray(Charsets.UTF_8)
+        assertEquals(ChatIntake.Result.STORED, ChatIntake.accept(xferWire, myFp, e.store, e.defense, e.seen))
+        val stored = e.store.readInbox().single()
+        assertEquals("xfer", stored.type)
+    }
+
+    @Test
     fun duplicateIdStoredOnce() {
         val e = Env()
         ChatIntake.accept(wire(), myFp, e.store, e.defense, e.seen)

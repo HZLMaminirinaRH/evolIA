@@ -18,6 +18,7 @@ import com.evolia.app.chat.ChatIdentityStore
 import com.evolia.app.chat.ChatManager
 import com.evolia.app.chat.ChatStore
 import com.evolia.app.core.ActionQueue
+import com.evolia.app.core.Dashboard
 import com.evolia.app.core.EvoliaPaths
 import com.evolia.app.core.EvoliaValue
 import com.evolia.app.security.AdaptiveDefense
@@ -230,11 +231,17 @@ class EvoliaService : Service() {
                         // A plain chat message: nudge the user to open the chat.
                         "msg" -> newFrom.add(wire.from.take(8))
                         // An offline BTC-e transfer promise: decrypt the sealed
-                        // amount and post the receiver's "accusé de réception".
+                        // amount, CREDIT the recipient's balance (the sender already
+                        // debited at send time — crediting here conserves the total),
+                        // then post the "accusé de réception". The service runs
+                        // continuously, so crediting here (not only when the chat
+                        // screen is open) is what makes a transfer actually land.
                         "xfer" -> manager.openTransfer(wire)?.let { x ->
-                            TransferNotify.notifyReceived(
-                                this@EvoliaService, x.amountBtce, x.senderFingerprint.take(8), settled = false,
-                            )
+                            if (creditOfflineTransfer(paths, x.messageId, x.senderFingerprint, x.amountBtce)) {
+                                TransferNotify.notifyReceived(
+                                    this@EvoliaService, x.amountBtce, x.senderFingerprint.take(8), settled = false,
+                                )
+                            }
                         }
                         // "ack" (delivery receipt) is handled in the chat UI, not here.
                     }
@@ -244,6 +251,56 @@ class EvoliaService : Service() {
                 // Best-effort — a transient IO error must not break the loop.
             }
         }
+    }
+
+    /**
+     * Credit an inbound offline BTC-e transfer to this device's value state and
+     * journal it, exactly once. Idempotent: the transfer's envelope id is recorded
+     * in evolia_local_transfers.jsonl, and a re-delivery of the same envelope (the
+     * mesh is best-effort and may re-send) is detected and skipped, so a peer can
+     * never be double-credited. Returns true if this call applied the credit,
+     * false if it was already credited (so the caller doesn't re-notify).
+     *
+     * Conservation: the sender debited amountBtce at send time; this is the
+     * matching credit, so value moves between owners and is never created.
+     */
+    @Synchronized
+    private fun creditOfflineTransfer(
+        paths: EvoliaPaths,
+        envelopeId: String,
+        senderFingerprint: String,
+        amountBtce: Double,
+    ): Boolean {
+        if (amountBtce <= 0.0) return false
+        val journal = File(paths.home, "evolia_local_transfers.jsonl")
+        // Already credited? (idempotency guard against best-effort re-delivery)
+        if (journal.exists()) {
+            journal.forEachLine { line ->
+                if (line.contains("\"envelope_id\":\"$envelopeId\"") &&
+                    line.contains("\"status\":\"received\"")
+                ) {
+                    return false
+                }
+            }
+        }
+        val value = EvoliaValue(paths)
+        value.load()
+        val current = Dashboard.collect(paths).personal.totalV
+        val stateJson = JSONObject()
+            .put("total_v", current + amountBtce)
+            .put("cycle_count", value.cycleCount)
+        paths.home.mkdirs()
+        paths.valueState.writeText(stateJson.toString(2))
+
+        val entry = JSONObject()
+            .put("timestamp", System.currentTimeMillis())
+            .put("from", senderFingerprint)
+            .put("amount_btce", amountBtce)
+            .put("status", "received")
+            .put("mode", "offline")
+            .put("envelope_id", envelopeId)
+        journal.appendText(entry.toString() + "\n")
+        return true
     }
 
     private fun postChatNotification(senders: List<String>) {
