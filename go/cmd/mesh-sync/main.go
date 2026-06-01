@@ -130,7 +130,10 @@ func main() {
 		// Emit this node's current value each cycle (signed, with its cognitive
 		// proof-of-work and params attached).
 		localV, localWork := readLocalBlock()
-		sendBlock(self, localV, localWork, params, peers, key, egressLimit, health, stats, &egressThrottled, &coldSkipped, logf)
+		reached := sendBlock(self, localV, localWork, params, peers, key, egressLimit, health, stats, &egressThrottled, &coldSkipped, logf)
+		if len(peers) > 0 {
+			logf(fmt.Sprintf("emit device=%s v=%.4f reached %d/%d peers", self, localV, reached, len(peers)))
+		}
 
 		// Relay any externally-dropped vault block once (received UDP blocks are
 		// marked seen, so they are never re-propagated — no amplification).
@@ -141,11 +144,14 @@ func main() {
 			logf("scan error: " + err.Error())
 		}
 		for _, b := range blocks {
-			sendBlock(b.Device, b.VValue, b.Work, params, peers, key, egressLimit, health, stats, &egressThrottled, &coldSkipped, logf)
+			relayed := sendBlock(b.Device, b.VValue, b.Work, params, peers, key, egressLimit, health, stats, &egressThrottled, &coldSkipped, logf)
+			logf(fmt.Sprintf("relay vault block device=%s reached %d/%d peers", b.Device, relayed, len(peers)))
 		}
 
 		// Carry any queued chat envelopes to peers (opaque; never decrypted).
-		relayChat(paths.ChatOutbox(), peers, egressLimit, health, stats, &egressThrottled, &coldSkipped, logf)
+		if delivered := relayChat(paths.ChatOutbox(), peers, egressLimit, health, stats, &egressThrottled, &coldSkipped, logf); delivered > 0 {
+			logf(fmt.Sprintf("chat relay delivered %d datagram(s) across %d peer(s)", delivered, len(peers)))
+		}
 
 		// Adaptive cycle: under sustained hostile pressure the loop stretches
 		// toward 2× baseCycle so we emit less and spare the radio/battery; at
@@ -332,21 +338,29 @@ func listenChat(inboxPath string, seen map[string]bool, fpPath string, gate *def
 // across many peers cannot saturate the radio — Phase-2 fan-out reaches the
 // addressee via at least one un-throttled peer (the receiver dedups by id).
 // Cold peers (in a peer-health backoff window) are skipped without a dial.
-func relayChat(outboxPath string, peers []string, egressLimit *egress.Limiter, health *peerhealth.Tracker, stats *meshstats.Recorder, egressThrottled, coldSkipped *atomic.Uint64, logf func(string)) {
+// relayChat drains the outbox and fans each sealed envelope out to every peer,
+// returning the number of datagrams that actually left the radio (summing
+// sendChat's per-peer verdict). The caller logs this so a cycle that drained
+// messages but delivered none is visible; a void return would hide that.
+func relayChat(outboxPath string, peers []string, egressLimit *egress.Limiter, health *peerhealth.Tracker, stats *meshstats.Recorder, egressThrottled, coldSkipped *atomic.Uint64, logf func(string)) int {
 	if len(peers) == 0 {
-		return
+		return 0
 	}
 	msgs, err := chat.DrainOutbox(outboxPath)
 	if err != nil {
 		logf("chat outbox error: " + err.Error())
-		return
+		return 0
 	}
+	delivered := 0
 	for _, m := range msgs {
 		data := m.Wire()
 		for _, peer := range peers {
-			sendChat(chatPeerAddr(peer), data, egressLimit, health, stats, egressThrottled, coldSkipped, logf)
+			if sendChat(chatPeerAddr(peer), data, egressLimit, health, stats, egressThrottled, coldSkipped, logf) {
+				delivered++
+			}
 		}
 	}
+	return delivered
 }
 
 // chatPeerAddr maps a peer's mesh address (host or host:blockport) to its chat
@@ -359,25 +373,30 @@ func chatPeerAddr(peer string) string {
 	return net.JoinHostPort(host, chatPort)
 }
 
-func sendChat(addr string, data []byte, egressLimit *egress.Limiter, health *peerhealth.Tracker, stats *meshstats.Recorder, egressThrottled, coldSkipped *atomic.Uint64, logf func(string)) {
+// sendChat carries one opaque chat datagram to a peer and reports whether it
+// actually left the radio: true on a successful Write, false when the send was
+// skipped (cold peer), throttled (egress), or failed (dial/Write error). The
+// caller (relayChat) folds these booleans into a delivered count, so a void
+// return would discard the one fact the relay needs to report.
+func sendChat(addr string, data []byte, egressLimit *egress.Limiter, health *peerhealth.Tracker, stats *meshstats.Recorder, egressThrottled, coldSkipped *atomic.Uint64, logf func(string)) bool {
 	host := peerHost(addr)
 	if !health.MaySend(host) {
 		coldSkipped.Add(1)
 		stats.Record(meshstats.ColdSkipped)
-		return // cold peer in backoff window — skip silently, no dial
+		return false // cold peer in backoff window — skip silently, no dial
 	}
 	if !egressLimit.Allow(host) {
 		egressThrottled.Add(1)
 		stats.Record(meshstats.EgressThrottled)
 		logf("chat egress throttled -> " + addr)
-		return
+		return false
 	}
 	conn, err := net.DialTimeout("udp", addr, time.Second)
 	if err != nil {
 		consec := health.RecordFailure(host)
 		fails := stats.Record(meshstats.SendFail)
 		logf(fmt.Sprintf("chat dial %s failed: %s (consec=%d, lifetime_fails=%d)", addr, err.Error(), consec, fails))
-		return
+		return false
 	}
 	defer conn.Close()
 	_ = conn.SetWriteDeadline(time.Now().Add(time.Second))
@@ -385,11 +404,12 @@ func sendChat(addr string, data []byte, egressLimit *egress.Limiter, health *pee
 		consec := health.RecordFailure(host)
 		fails := stats.Record(meshstats.SendFail)
 		logf(fmt.Sprintf("chat send %s failed: %s (consec=%d, lifetime_fails=%d)", addr, err.Error(), consec, fails))
-	} else {
-		successes := health.RecordSuccess(host)
-		_ = stats.Record(meshstats.SendOK)
-		logf(fmt.Sprintf("chat sent -> %s (peer_successes=%d)", addr, successes))
+		return false
 	}
+	successes := health.RecordSuccess(host)
+	_ = stats.Record(meshstats.SendOK)
+	logf(fmt.Sprintf("chat sent -> %s (peer_successes=%d)", addr, successes))
+	return true
 }
 
 // peerHost strips the port from an addr so the egress limiter buckets by host:
@@ -402,10 +422,14 @@ func peerHost(addr string) string {
 	return addr
 }
 
-func sendBlock(device string, vValue float64, work *pow.WorkProof, params map[string]float64, peers []string, key []byte, egressLimit *egress.Limiter, health *peerhealth.Tracker, stats *meshstats.Recorder, egressThrottled, coldSkipped *atomic.Uint64, logf func(string)) {
+// sendBlock emits one signed block to every peer and returns how many peers it
+// actually reached (a successful Write). With no peers it returns 0 (the block
+// stays local). The caller logs the reached/total ratio, so a cycle where every
+// peer is cold or throttled is visible instead of silently swallowed.
+func sendBlock(device string, vValue float64, work *pow.WorkProof, params map[string]float64, peers []string, key []byte, egressLimit *egress.Limiter, health *peerhealth.Tracker, stats *meshstats.Recorder, egressThrottled, coldSkipped *atomic.Uint64, logf func(string)) int {
 	if len(peers) == 0 {
 		logf(fmt.Sprintf("local block device=%s v=%.4f (no peers)", device, vValue))
-		return
+		return 0
 	}
 	payload := map[string]any{"device_id": device, "v_value": vValue}
 	if len(key) > 0 {
@@ -419,6 +443,7 @@ func sendBlock(device string, vValue float64, work *pow.WorkProof, params map[st
 	}
 	data, _ := json.Marshal(payload)
 
+	reached := 0
 	for _, peer := range peers {
 		addr := peer
 		if !strings.Contains(addr, ":") {
@@ -452,9 +477,11 @@ func sendBlock(device string, vValue float64, work *pow.WorkProof, params map[st
 			successes := health.RecordSuccess(host)
 			_ = stats.Record(meshstats.SendOK)
 			logf(fmt.Sprintf("sent device=%s -> %s (peer_successes=%d)", device, addr, successes))
+			reached++
 		}
 		conn.Close()
 	}
+	return reached
 }
 
 // readLocalBlock returns this node's current value and its cognitive proof-of-
